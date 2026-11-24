@@ -1,0 +1,2699 @@
+```html
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>АВИАПОБЕГ 3D — Воксельная планета</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js r128 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Шрифты Inter и JetBrains Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #050811;
+            font-family: 'Inter', sans-serif;
+            color: #f8fafc;
+            touch-action: none;
+        }
+
+        .font-mono-hud {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        #gameContainer {
+            position: fixed;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 0;
+        }
+
+        #gameContainer canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* UI8 / Forge стеклянные карточки */
+        .ui8-glass {
+            background: rgba(10, 14, 24, 0.72);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+        }
+
+        .ui8-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            transition: all 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        .ui8-card:hover {
+            background: rgba(255, 255, 255, 0.07);
+            border-color: rgba(255, 255, 255, 0.18);
+            transform: translateY(-1px);
+        }
+
+        .ui8-card.active {
+            background: rgba(56, 189, 248, 0.14);
+            border-color: rgba(56, 189, 248, 0.65);
+            box-shadow: 0 0 22px rgba(56, 189, 248, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+        }
+
+        /* Кнопка запуска */
+        .btn-launch {
+            background: linear-gradient(135deg, #38bdf8 0%, #2563eb 100%);
+            box-shadow: 0 10px 30px rgba(37, 99, 235, 0.4), inset 0 1px 1px rgba(255, 255, 255, 0.35);
+            transition: transform 0.16s ease, box-shadow 0.2s ease, filter 0.2s ease;
+        }
+
+        .btn-launch:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 14px 36px rgba(56, 189, 248, 0.55), inset 0 1px 1px rgba(255, 255, 255, 0.45);
+            filter: brightness(1.06);
+        }
+
+        .btn-launch:active {
+            transform: translateY(0px) scale(0.985);
+        }
+
+        /* Тревога ракет */
+        @keyframes missilePulse {
+            0%, 100% { transform: scale(1); opacity: 1; box-shadow: 0 0 24px rgba(244, 63, 94, 0.65); }
+            50% { transform: scale(1.03); opacity: 0.88; box-shadow: 0 0 10px rgba(244, 63, 94, 0.25); }
+        }
+
+        .missile-alert {
+            animation: missilePulse 0.42s ease-in-out infinite;
+        }
+
+        /* Всплывающие уведомления */
+        @keyframes floatUpFade {
+            0% { opacity: 0; transform: translate(-50%, 12px) scale(0.86); }
+            18% { opacity: 1; transform: translate(-50%, 0px) scale(1.06); }
+            100% { opacity: 0; transform: translate(-50%, -52px) scale(0.95); }
+        }
+
+        .popup-text {
+            position: fixed;
+            left: 50%;
+            pointer-events: none;
+            z-index: 30;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            text-shadow: 0 4px 16px rgba(0, 0, 0, 0.85);
+            animation: floatUpFade 1.1s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+            white-space: nowrap;
+        }
+
+        /* Экранные виньетки */
+        #damageVignette {
+            pointer-events: none;
+            background: radial-gradient(circle at center, transparent 48%, rgba(239, 68, 68, 0.6) 100%);
+            opacity: 0;
+            transition: opacity 0.14s ease-out;
+        }
+
+        #dodgeVignette {
+            pointer-events: none;
+            background: radial-gradient(circle at center, transparent 56%, rgba(56, 189, 248, 0.34) 100%);
+            opacity: 0;
+            transition: opacity 0.16s ease-out;
+        }
+
+        /* Тонкий скроллбар для мобильного меню */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body class="relative w-full h-full overflow-hidden">
+
+    <!-- Контейнер Three.js -->
+    <div id="gameContainer"></div>
+
+    <!-- Виньетки -->
+    <div id="damageVignette" class="fixed inset-0 z-10"></div>
+    <div id="dodgeVignette" class="fixed inset-0 z-10"></div>
+
+    <!-- Слой всплывающего текста -->
+    <div id="popupLayer" class="fixed inset-0 pointer-events-none z-20"></div>
+
+    <!-- ======================================================================= -->
+    <!-- ИГРОВОЙ HUD (МИНИМАЛИСТИЧНЫЙ UI8-СТИЛЬ)                                 -->
+    <!-- ======================================================================= -->
+    <header id="hud" class="fixed top-0 left-0 right-0 z-20 p-3 sm:p-5 pointer-events-none hidden">
+        <div class="max-w-7xl mx-auto flex flex-wrap items-start justify-between gap-2 sm:gap-4">
+
+            <!-- Левый блок: Прочность (сегменты), Щит и Волна -->
+            <div class="ui8-glass rounded-2xl px-3.5 py-2.5 sm:px-4 flex items-center gap-3.5 pointer-events-auto">
+                <div class="flex flex-col">
+                    <div class="flex items-center justify-between gap-3 text-[10px] uppercase tracking-widest font-semibold text-slate-400 mb-1.5">
+                        <span>Корпус</span>
+                        <span id="shieldBadge" class="hidden text-cyan-300 font-bold">ЩИТ</span>
+                    </div>
+                    <div id="hpSegments" class="flex items-center gap-1.5">
+                        <!-- Генерируется динамически по maxHp самолета -->
+                    </div>
+                </div>
+                <div class="h-7 w-px bg-white/10"></div>
+                <div class="flex flex-col">
+                    <span class="text-[10px] uppercase tracking-widest text-slate-400 font-semibold">Волна</span>
+                    <span id="waveDisplay" class="font-mono-hud text-sm sm:text-base font-bold text-sky-400 leading-tight">1</span>
+                </div>
+            </div>
+
+            <!-- Центральный блок: Счет, Рекорд и Тревога ракет -->
+            <div class="flex flex-col items-center gap-2 order-3 sm:order-2 w-full sm:w-auto">
+                <div class="ui8-glass rounded-2xl px-5 py-2 flex items-center gap-5 pointer-events-auto justify-center">
+                    <div class="text-center">
+                        <div class="text-[10px] uppercase tracking-widest text-slate-400 font-semibold">Счет</div>
+                        <div id="scoreDisplay" class="font-mono-hud text-xl sm:text-2xl font-bold text-white leading-tight">0</div>
+                    </div>
+                    <div class="h-7 w-px bg-white/10"></div>
+                    <div class="text-center">
+                        <div class="text-[10px] uppercase tracking-widest text-amber-300/80 font-semibold">Рекорд</div>
+                        <div id="highScoreHud" class="font-mono-hud text-base sm:text-lg font-bold text-amber-300 leading-tight">0</div>
+                    </div>
+                </div>
+
+                <!-- Баннер предупреждения о ракете -->
+                <div id="missileWarning" class="hidden missile-alert px-4 py-1.5 rounded-xl bg-rose-600/90 border border-rose-300/60 text-white text-xs sm:text-sm font-black uppercase tracking-wider flex items-center gap-2">
+                    <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"></path>
+                    </svg>
+                    <span id="missileWarningText">ТРЕВОГА: РАКЕТА!</span>
+                </div>
+            </div>
+
+            <!-- Правый блок: Заряд бочки, Звук и кнопка «Меню» -->
+            <div class="ui8-glass rounded-2xl px-3.5 py-2 sm:px-4 flex items-center gap-2.5 sm:gap-3 pointer-events-auto order-2 sm:order-3">
+                <div class="flex flex-col min-w-[88px] sm:min-w-[114px]">
+                    <div class="flex items-center justify-between text-[10px] uppercase tracking-widest font-semibold mb-1.5">
+                        <span class="text-slate-400">Бочка</span>
+                        <span id="dodgeStatusText" class="text-cyan-300 font-bold">ГОТОВА</span>
+                    </div>
+                    <div class="w-full h-2 bg-white/10 rounded-full overflow-hidden">
+                        <div id="dodgeBarFill" class="h-full bg-gradient-to-r from-sky-400 to-cyan-300 transition-all duration-75 rounded-full" style="width: 100%;"></div>
+                    </div>
+                </div>
+
+                <div class="h-7 w-px bg-white/10"></div>
+
+                <!-- Кнопка звука -->
+                <button id="hudMuteBtn" type="button" aria-label="Звук"
+                    class="p-2 rounded-xl bg-white/5 hover:bg-white/15 border border-white/10 text-sky-300 transition active:scale-95 cursor-pointer">
+                    <svg class="sound-on-icon w-4 h-4 sm:w-5 sm:h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M11 5L6 9H2v6h4l5 4V5z"></path>
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M15.54 8.46a5 5 0 010 7.07M19.07 4.93a10 10 0 010 14.14"></path>
+                    </svg>
+                    <svg class="sound-off-icon w-4 h-4 sm:w-5 sm:h-5 hidden text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M11 5L6 9H2v6h4l5 4V5z"></path>
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M23 9l-6 6M17 9l6 6"></path>
+                    </svg>
+                </button>
+
+                <!-- Быстрый выход в меню -->
+                <button id="hudMenuBtn" type="button"
+                    class="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/15 border border-white/10 text-xs font-bold text-slate-200 transition active:scale-95 cursor-pointer">
+                    Меню
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Сенсорные кнопки для мобильных и подсказка внизу во время игры -->
+    <div id="inGameBottom" class="fixed bottom-4 left-0 right-0 z-20 px-4 pointer-events-none hidden">
+        <div class="max-w-3xl mx-auto flex items-end justify-between gap-3">
+            <!-- Левая и правая кнопки поворота (видны на мобильных/планшетах) -->
+            <div class="flex sm:hidden items-center gap-2 pointer-events-auto">
+                <button id="touchLeftBtn" type="button" aria-label="Влево"
+                    class="ui8-glass w-14 h-14 rounded-2xl flex items-center justify-center text-white active:scale-95 active:bg-sky-500/30">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"></path>
+                    </svg>
+                </button>
+                <button id="touchRightBtn" type="button" aria-label="Вправо"
+                    class="ui8-glass w-14 h-14 rounded-2xl flex items-center justify-center text-white active:scale-95 active:bg-sky-500/30">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"></path>
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Подсказка на ПК -->
+            <div class="hidden sm:flex mx-auto ui8-glass rounded-full px-4 py-1.5 text-xs text-slate-300 items-center gap-3">
+                <span><strong class="text-sky-300">A / D</strong> — поворот</span>
+                <span class="text-white/20">•</span>
+                <span><strong class="text-sky-300">W / S</strong> — тяга</span>
+                <span class="text-white/20">•</span>
+                <span><strong class="text-cyan-300">2x A/D</strong> или <strong class="text-cyan-300">Пробел / Shift</strong> — бочка</span>
+            </div>
+
+            <!-- Кнопка бочки на мобильных -->
+            <button id="touchRollBtn" type="button"
+                class="sm:hidden ui8-glass pointer-events-auto px-5 h-14 rounded-2xl font-extrabold text-xs uppercase tracking-wider text-cyan-300 border-cyan-400/40 active:scale-95 active:bg-cyan-500/30">
+                Бочка
+            </button>
+        </div>
+    </div>
+
+    <!-- ======================================================================= -->
+    <!-- ЖИВОЕ 3D-МЕНЮ (UI8 / FORGE SHOWCASE OVERLAY)                            -->
+    <!-- ======================================================================= -->
+    <div id="menuOverlay" class="fixed inset-0 z-20 pointer-events-none flex flex-col justify-between p-3 sm:p-6">
+
+        <!-- Верхняя полоса меню -->
+        <div class="flex items-center justify-between gap-3 pointer-events-auto">
+            <div class="ui8-glass rounded-2xl px-4 py-2.5 flex items-center gap-3">
+                <div class="w-2.5 h-2.5 rounded-full bg-sky-400 shadow-[0_0_12px_#38bdf8]"></div>
+                <div>
+                    <h1 class="text-base sm:text-xl font-black tracking-tight text-white leading-none">
+                        АВИА<span class="text-sky-400">ПОБЕГ</span> <span class="text-cyan-300">3D</span>
+                    </h1>
+                    <p class="text-[10px] sm:text-[11px] text-slate-400 font-medium mt-0.5 hidden sm:block">
+                        Воксельная орбитальная аркада
+                    </p>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-2 sm:gap-3">
+                <div class="ui8-glass rounded-2xl px-3.5 py-2 flex items-center gap-2 text-xs font-mono-hud">
+                    <span class="text-slate-400 uppercase tracking-wider">Рекорд</span>
+                    <span id="menuHighScore" class="text-amber-300 font-bold text-sm">0</span>
+                </div>
+
+                <button id="menuMuteBtn" type="button" aria-label="Звук"
+                    class="ui8-glass p-2.5 rounded-2xl text-sky-300 hover:bg-white/10 transition active:scale-95 cursor-pointer">
+                    <svg class="sound-on-icon w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M11 5L6 9H2v6h4l5 4V5z"></path>
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M15.54 8.46a5 5 0 010 7.07M19.07 4.93a10 10 0 010 14.14"></path>
+                    </svg>
+                    <svg class="sound-off-icon w-5 h-5 hidden text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M11 5L6 9H2v6h4l5 4V5z"></path>
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M23 9l-6 6M17 9l6 6"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Центральная зона свободна, чтобы было видно 3D-планету и летящий самолет! -->
+        <div class="flex-1 flex items-end lg:items-center justify-between gap-4 my-2 overflow-hidden">
+
+            <!-- Левая панель на ПК / нижний док на мобильных: Самолеты + Планеты -->
+            <div class="w-full lg:w-[340px] flex flex-col gap-3 pointer-events-auto max-h-full overflow-y-auto no-scrollbar">
+
+                <!-- Выбор самолета -->
+                <div class="ui8-glass rounded-3xl p-4">
+                    <div class="flex items-center justify-between mb-2.5">
+                        <span class="text-[11px] font-bold uppercase tracking-widest text-slate-400">Ангар — Самолет</span>
+                        <span id="selectedPlanePerk" class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-sky-500/15 text-sky-300 border border-sky-400/25">
+                            Сбалансированный
+                        </span>
+                    </div>
+
+                    <div id="aircraftGrid" class="grid grid-cols-2 gap-2 mb-3">
+                        <!-- Карточки самолетов рендерятся JS -->
+                    </div>
+
+                    <!-- Характеристики выбранного самолета -->
+                    <div class="space-y-1.5 pt-2 border-t border-white/10">
+                        <div class="flex items-center justify-between text-[11px]">
+                            <span class="text-slate-400">Скорость</span>
+                            <div id="statSpeed" class="flex gap-1"></div>
+                        </div>
+                        <div class="flex items-center justify-between text-[11px]">
+                            <span class="text-slate-400">Маневренность</span>
+                            <div id="statAgility" class="flex gap-1"></div>
+                        </div>
+                        <div class="flex items-center justify-between text-[11px]">
+                            <span class="text-slate-400">Броня (HP)</span>
+                            <div id="statArmor" class="flex gap-1"></div>
+                        </div>
+                        <div class="flex items-center justify-between text-[11px]">
+                            <span class="text-slate-400">Перезарядка бочки</span>
+                            <span id="statRollCd" class="font-mono-hud text-cyan-300 font-semibold">1.35с</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Выбор планеты (на мобильных здесь, на ПК — справа) -->
+                <div class="ui8-glass rounded-3xl p-4 lg:hidden">
+                    <div class="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-2">Планета</div>
+                    <div id="planetGridMobile" class="grid grid-cols-2 gap-2"></div>
+                </div>
+
+                <!-- Кнопка взлета на мобильных -->
+                <button id="startBtnMobile" type="button"
+                    class="btn-launch lg:hidden w-full py-3.5 rounded-2xl font-extrabold text-base uppercase tracking-wider text-white cursor-pointer">
+                    Взлет
+                </button>
+            </div>
+
+            <!-- Правая панель на ПК: Выбор планеты + Управление + Кнопка Взлет -->
+            <div class="hidden lg:flex w-[320px] flex-col gap-3 pointer-events-auto">
+                <div class="ui8-glass rounded-3xl p-4">
+                    <div class="flex items-center justify-between mb-2.5">
+                        <span class="text-[11px] font-bold uppercase tracking-widest text-slate-400">Карта — Планета</span>
+                        <span id="selectedPlanetTag" class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white/10 text-slate-200">
+                            Океаны и горы
+                        </span>
+                    </div>
+                    <div id="planetGridDesktop" class="grid grid-cols-2 gap-2">
+                        <!-- Карточки планет рендерятся JS -->
+                    </div>
+                </div>
+
+                <!-- Краткая памятка по управлению -->
+                <div class="ui8-glass rounded-3xl p-4 space-y-2 text-xs text-slate-300">
+                    <div class="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-1">Управление</div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-slate-400">Поворот / Тяга</span>
+                        <span class="font-mono-hud text-white bg-white/10 px-2 py-0.5 rounded-md">WASD / Стрелки</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-slate-400">Бочка (уворот)</span>
+                        <span class="font-mono-hud text-cyan-300 bg-cyan-500/15 px-2 py-0.5 rounded-md">2x A/D · Пробел</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-slate-400">Бонусы в небе</span>
+                        <span class="text-emerald-300 font-semibold">Ремонт (+HP) и Щит</span>
+                    </div>
+                </div>
+
+                <!-- Главная кнопка запуска на ПК -->
+                <button id="startBtnDesktop" type="button"
+                    class="btn-launch w-full py-4 rounded-2xl font-extrabold text-lg uppercase tracking-wider text-white cursor-pointer flex items-center justify-center gap-2">
+                    <span>Взлет</span>
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6"></path>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ======================================================================= -->
+    <!-- ЭКРАН ПРОИГРЫША (GAME OVER)                                             -->
+    <!-- ======================================================================= -->
+    <div id="gameOverScreen" class="fixed inset-0 z-30 flex items-center justify-center p-4 bg-slate-950/65 backdrop-blur-md hidden">
+        <div class="ui8-glass rounded-3xl max-w-md w-full p-6 sm:p-8 text-center relative overflow-hidden">
+            <div class="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-rose-500 to-transparent opacity-90"></div>
+
+            <div id="newRecordBadge" class="hidden inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/20 border border-amber-400/45 text-amber-300 text-xs font-bold uppercase tracking-wider mb-3">
+                Новый рекорд!
+            </div>
+
+            <h2 class="text-3xl sm:text-4xl font-black text-white tracking-tight mb-1">САМОЛЕТ СБИТ</h2>
+            <p id="gameOverSummary" class="text-slate-400 text-sm mb-6">Враги не дремлют — попробуй снова!</p>
+
+            <div class="grid grid-cols-3 gap-2.5 mb-6">
+                <div class="rounded-2xl bg-white/5 border border-white/10 p-3">
+                    <div class="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Счет</div>
+                    <div id="finalScore" class="font-mono-hud text-xl font-bold text-white mt-1">0</div>
+                </div>
+                <div class="rounded-2xl bg-white/5 border border-white/10 p-3">
+                    <div class="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Время</div>
+                    <div id="finalTime" class="font-mono-hud text-xl font-bold text-sky-400 mt-1">00:00</div>
+                </div>
+                <div class="rounded-2xl bg-white/5 border border-white/10 p-3">
+                    <div class="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">Увороты</div>
+                    <div id="finalDodges" class="font-mono-hud text-xl font-bold text-amber-300 mt-1">0</div>
+                </div>
+            </div>
+
+            <div class="flex gap-2.5">
+                <button id="gameOverMenuBtn" type="button"
+                    class="w-1/3 py-3.5 px-4 rounded-2xl bg-white/5 hover:bg-white/15 border border-white/10 font-bold text-sm text-slate-200 transition active:scale-95 cursor-pointer">
+                    Меню
+                </button>
+                <button id="restartBtn" type="button"
+                    class="btn-launch w-2/3 py-3.5 px-6 rounded-2xl font-extrabold text-base uppercase tracking-wider text-white cursor-pointer">
+                    Еще раз
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        (() => {
+            'use strict';
+
+            // =========================================================================
+            // 1. КОНФИГУРАЦИЯ САМОЛЕТОВ И ПЛАНЕТ
+            // =========================================================================
+            const AIRCRAFT_LIST = [
+                {
+                    id: 'biplane',
+                    name: 'Биплан',
+                    subtitle: 'Классика',
+                    perk: 'Сбалансированный',
+                    swatch: '#facc15',
+                    speedRating: 3,
+                    agilityRating: 4,
+                    armorRating: 3,
+                    baseSpeed: 21,
+                    minSpeed: 14,
+                    maxSpeed: 30,
+                    turnRate: 2.45,
+                    maxHp: 3,
+                    dodgeCooldown: 1.35,
+                    dodgeShockwave: 0,
+                    stealthFactor: 1.0,
+                    trailColor: 0xfde68a
+                },
+                {
+                    id: 'interceptor',
+                    name: 'Перехватчик',
+                    subtitle: 'Сверхзвук',
+                    perk: 'Макс. скорость',
+                    swatch: '#38bdf8',
+                    speedRating: 5,
+                    agilityRating: 4,
+                    armorRating: 2,
+                    baseSpeed: 25.5,
+                    minSpeed: 17,
+                    maxSpeed: 36,
+                    turnRate: 2.55,
+                    maxHp: 2,
+                    dodgeCooldown: 1.0,
+                    dodgeShockwave: 0,
+                    stealthFactor: 1.0,
+                    trailColor: 0x38bdf8
+                },
+                {
+                    id: 'gunship',
+                    name: 'Штурмовик',
+                    subtitle: 'Тяжелый',
+                    perk: 'Ударная волна бочки',
+                    swatch: '#4d7c0f',
+                    speedRating: 2,
+                    agilityRating: 3,
+                    armorRating: 5,
+                    baseSpeed: 18.2,
+                    minSpeed: 12.5,
+                    maxSpeed: 26,
+                    turnRate: 2.05,
+                    maxHp: 5,
+                    dodgeCooldown: 1.65,
+                    dodgeShockwave: 11.5, // Уничтожает пули вокруг при бочке
+                    stealthFactor: 1.0,
+                    trailColor: 0xcbd5e1
+                },
+                {
+                    id: 'stealth',
+                    name: 'Призрак',
+                    subtitle: 'Стелс-дельта',
+                    perk: 'Стелс против ракет',
+                    swatch: '#a855f7',
+                    speedRating: 4,
+                    agilityRating: 5,
+                    armorRating: 3,
+                    baseSpeed: 23.5,
+                    minSpeed: 15.5,
+                    maxSpeed: 33.5,
+                    turnRate: 2.95,
+                    maxHp: 3,
+                    dodgeCooldown: 1.05,
+                    dodgeShockwave: 0,
+                    stealthFactor: 0.62, // Ракетам сложнее доворачивать
+                    trailColor: 0xc084fc
+                }
+            ];
+
+            const PLANET_LIST = [
+                {
+                    id: 'earth',
+                    name: 'Земля',
+                    tag: 'Океаны и горы',
+                    swatch: 'linear-gradient(135deg, #0284c7, #22c55e)',
+                    bgHex: 0x040914,
+                    atmosHex: 0x38bdf8,
+                    sunHex: 0xfffbeb,
+                    hemiSky: 0x7dd3fc,
+                    hemiGround: 0x1e3a8a,
+                    rimHex: 0x38bdf8
+                },
+                {
+                    id: 'mars',
+                    name: 'Марс',
+                    tag: 'Каньоны и пыль',
+                    swatch: 'linear-gradient(135deg, #ea580c, #9a3412)',
+                    bgHex: 0x0e0605,
+                    atmosHex: 0xf97316,
+                    sunHex: 0xffedd5,
+                    hemiSky: 0xfdba74,
+                    hemiGround: 0x451a03,
+                    rimHex: 0xfb923c
+                },
+                {
+                    id: 'arctic',
+                    name: 'Арктика',
+                    tag: 'Ледяные шпили',
+                    swatch: 'linear-gradient(135deg, #22d3ee, #f8fafc)',
+                    bgHex: 0x030c14,
+                    atmosHex: 0x22d3ee,
+                    sunHex: 0xf0f9ff,
+                    hemiSky: 0xa5f3fc,
+                    hemiGround: 0x0c4a6e,
+                    rimHex: 0x67e8f9
+                },
+                {
+                    id: 'volcano',
+                    name: 'Вулкан',
+                    tag: 'Лава и базальт',
+                    swatch: 'linear-gradient(135deg, #ef4444, #292524)',
+                    bgHex: 0x100404,
+                    atmosHex: 0xef4444,
+                    sunHex: 0xfef2f2,
+                    hemiSky: 0xfca5a5,
+                    hemiGround: 0x450a0a,
+                    rimHex: 0xf97316
+                }
+            ];
+
+            const CONFIG = {
+                planetRadius: 56,
+                flightAltitude: 64.8,
+                dodgeDuration: 0.54,
+                dodgeSpeedBoost: 14,
+                doubleTapWindow: 310,
+                closeCallDist: 6.4,
+                invulnAfterHit: 1.35,
+                shieldDuration: 9.0
+            };
+
+            const STORAGE_KEY = 'aviapobeg_3d_ui8_highscore_v1';
+
+            // =========================================================================
+            // 2. СИНТЕЗИРОВАННЫЙ ЗВУКОВОЙ ДВИЖОК (WEB AUDIO API)
+            // =========================================================================
+            class SoundEngine {
+                constructor() {
+                    this.ctx = null;
+                    this.muted = false;
+                    this.noiseBuffer = null;
+                }
+
+                init() {
+                    try {
+                        if (!this.ctx) {
+                            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                            if (!AudioCtx) return;
+                            this.ctx = new AudioCtx();
+                            const size = this.ctx.sampleRate * 1.5;
+                            const buffer = this.ctx.createBuffer(1, size, this.ctx.sampleRate);
+                            const data = buffer.getChannelData(0);
+                            for (let i = 0; i < size; i++) data[i] = Math.random() * 2 - 1;
+                            this.noiseBuffer = buffer;
+                        }
+                        if (this.ctx.state === 'suspended') this.ctx.resume();
+                    } catch (e) {
+                        console.warn('Web Audio API недоступен:', e);
+                    }
+                }
+
+                toggleMute() {
+                    this.muted = !this.muted;
+                    return this.muted;
+                }
+
+                playClick() {
+                    if (this.muted || !this.ctx) return;
+                    const now = this.ctx.currentTime;
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(520, now);
+                    osc.frequency.exponentialRampToValueAtTime(760, now + 0.05);
+                    gain.gain.setValueAtTime(0.06, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.065);
+                }
+
+                playMachineGun() {
+                    if (this.muted || !this.ctx || !this.noiseBuffer) return;
+                    const now = this.ctx.currentTime;
+                    const src = this.ctx.createBufferSource();
+                    src.buffer = this.noiseBuffer;
+
+                    const filter = this.ctx.createBiquadFilter();
+                    filter.type = 'bandpass';
+                    filter.frequency.setValueAtTime(1450, now);
+                    filter.frequency.exponentialRampToValueAtTime(360, now + 0.055);
+                    filter.Q.value = 1.5;
+
+                    const gain = this.ctx.createGain();
+                    gain.gain.setValueAtTime(0.1, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+
+                    src.connect(filter);
+                    filter.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    src.start(now);
+                    src.stop(now + 0.065);
+                }
+
+                playRadarBeep(urgent = false) {
+                    if (this.muted || !this.ctx) return;
+                    const now = this.ctx.currentTime;
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(urgent ? 1620 : 1220, now);
+                    osc.frequency.setValueAtTime(urgent ? 1880 : 1420, now + 0.04);
+
+                    gain.gain.setValueAtTime(0.075, now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.1);
+                }
+
+                playMissileLaunch() {
+                    if (this.muted || !this.ctx || !this.noiseBuffer) return;
+                    const now = this.ctx.currentTime;
+                    const src = this.ctx.createBufferSource();
+                    src.buffer = this.noiseBuffer;
+
+                    const filter = this.ctx.createBiquadFilter();
+                    filter.type = 'bandpass';
+                    filter.frequency.setValueAtTime(420, now);
+                    filter.frequency.exponentialRampToValueAtTime(1950, now + 0.22);
+                    filter.frequency.exponentialRampToValueAtTime(520, now + 0.45);
+
+                    const gain = this.ctx.createGain();
+                    gain.gain.setValueAtTime(0.01, now);
+                    gain.gain.linearRampToValueAtTime(0.18, now + 0.05);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.46);
+
+                    src.connect(filter);
+                    filter.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    src.start(now);
+                    src.stop(now + 0.48);
+                }
+
+                playBarrelRoll() {
+                    if (this.muted || !this.ctx || !this.noiseBuffer) return;
+                    const now = this.ctx.currentTime;
+
+                    const src = this.ctx.createBufferSource();
+                    src.buffer = this.noiseBuffer;
+                    const filter = this.ctx.createBiquadFilter();
+                    filter.type = 'bandpass';
+                    filter.frequency.setValueAtTime(320, now);
+                    filter.frequency.exponentialRampToValueAtTime(1750, now + 0.18);
+                    filter.frequency.exponentialRampToValueAtTime(280, now + 0.45);
+                    filter.Q.value = 1.9;
+
+                    const gain = this.ctx.createGain();
+                    gain.gain.setValueAtTime(0.02, now);
+                    gain.gain.linearRampToValueAtTime(0.22, now + 0.1);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.46);
+
+                    src.connect(filter);
+                    filter.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    src.start(now);
+                    src.stop(now + 0.48);
+
+                    const osc = this.ctx.createOscillator();
+                    const oscGain = this.ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(260, now);
+                    osc.frequency.exponentialRampToValueAtTime(680, now + 0.16);
+                    osc.frequency.exponentialRampToValueAtTime(340, now + 0.38);
+                    oscGain.gain.setValueAtTime(0.08, now);
+                    oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+                    osc.connect(oscGain);
+                    oscGain.connect(this.ctx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.42);
+                }
+
+                playCloseDodge() {
+                    if (this.muted || !this.ctx) return;
+                    const now = this.ctx.currentTime;
+                    [680, 1020].forEach((freq, idx) => {
+                        const osc = this.ctx.createOscillator();
+                        const gain = this.ctx.createGain();
+                        osc.type = 'sine';
+                        osc.frequency.setValueAtTime(freq, now + idx * 0.06);
+                        gain.gain.setValueAtTime(0.1, now + idx * 0.06);
+                        gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.06 + 0.18);
+                        osc.connect(gain);
+                        gain.connect(this.ctx.destination);
+                        osc.start(now + idx * 0.06);
+                        osc.stop(now + idx * 0.06 + 0.2);
+                    });
+                }
+
+                playPickup() {
+                    if (this.muted || !this.ctx) return;
+                    const now = this.ctx.currentTime;
+                    [523, 659, 880].forEach((freq, idx) => {
+                        const osc = this.ctx.createOscillator();
+                        const gain = this.ctx.createGain();
+                        osc.type = 'triangle';
+                        osc.frequency.setValueAtTime(freq, now + idx * 0.055);
+                        gain.gain.setValueAtTime(0.11, now + idx * 0.055);
+                        gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.055 + 0.22);
+                        osc.connect(gain);
+                        gain.connect(this.ctx.destination);
+                        osc.start(now + idx * 0.055);
+                        osc.stop(now + idx * 0.055 + 0.24);
+                    });
+                }
+
+                playExplosion(intensity = 1) {
+                    if (this.muted || !this.ctx || !this.noiseBuffer) return;
+                    const now = this.ctx.currentTime;
+
+                    const src = this.ctx.createBufferSource();
+                    src.buffer = this.noiseBuffer;
+                    const filter = this.ctx.createBiquadFilter();
+                    filter.type = 'lowpass';
+                    filter.frequency.setValueAtTime(800 * intensity, now);
+                    filter.frequency.exponentialRampToValueAtTime(65, now + 0.55);
+
+                    const gain = this.ctx.createGain();
+                    gain.gain.setValueAtTime(Math.min(0.32, 0.24 * intensity), now);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.56);
+
+                    src.connect(filter);
+                    filter.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    src.start(now);
+                    src.stop(now + 0.58);
+
+                    const osc = this.ctx.createOscillator();
+                    const oscGain = this.ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(115, now);
+                    osc.frequency.exponentialRampToValueAtTime(28, now + 0.36);
+                    oscGain.gain.setValueAtTime(0.24 * intensity, now);
+                    oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+                    osc.connect(oscGain);
+                    oscGain.connect(this.ctx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.4);
+                }
+            }
+
+            const sound = new SoundEngine();
+
+            // =========================================================================
+            // 3. DOM-ЭЛЕМЕНТЫ
+            // =========================================================================
+            const gameContainer = document.getElementById('gameContainer');
+            const hudEl = document.getElementById('hud');
+            const inGameBottom = document.getElementById('inGameBottom');
+            const menuOverlay = document.getElementById('menuOverlay');
+            const gameOverScreen = document.getElementById('gameOverScreen');
+            const damageVignette = document.getElementById('damageVignette');
+            const dodgeVignette = document.getElementById('dodgeVignette');
+            const popupLayer = document.getElementById('popupLayer');
+
+            const hpSegments = document.getElementById('hpSegments');
+            const shieldBadge = document.getElementById('shieldBadge');
+            const waveDisplay = document.getElementById('waveDisplay');
+            const scoreDisplay = document.getElementById('scoreDisplay');
+            const highScoreHud = document.getElementById('highScoreHud');
+            const menuHighScore = document.getElementById('menuHighScore');
+            const dodgeBarFill = document.getElementById('dodgeBarFill');
+            const dodgeStatusText = document.getElementById('dodgeStatusText');
+            const missileWarning = document.getElementById('missileWarning');
+            const missileWarningText = document.getElementById('missileWarningText');
+
+            const aircraftGrid = document.getElementById('aircraftGrid');
+            const planetGridDesktop = document.getElementById('planetGridDesktop');
+            const planetGridMobile = document.getElementById('planetGridMobile');
+            const selectedPlanePerk = document.getElementById('selectedPlanePerk');
+            const selectedPlanetTag = document.getElementById('selectedPlanetTag');
+            const statSpeed = document.getElementById('statSpeed');
+            const statAgility = document.getElementById('statAgility');
+            const statArmor = document.getElementById('statArmor');
+            const statRollCd = document.getElementById('statRollCd');
+
+            const finalScoreEl = document.getElementById('finalScore');
+            const finalTimeEl = document.getElementById('finalTime');
+            const finalDodgesEl = document.getElementById('finalDodges');
+            const newRecordBadge = document.getElementById('newRecordBadge');
+            const gameOverSummary = document.getElementById('gameOverSummary');
+
+            // =========================================================================
+            // 4. THREE.JS СЦЕНА, КАМЕРА И ОСВЕЩЕНИЕ
+            // =========================================================================
+            const scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x040914);
+
+            const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.2, 1200);
+            const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            gameContainer.appendChild(renderer.domElement);
+
+            const ambientLight = new THREE.AmbientLight(0x94a3b8, 0.55);
+            scene.add(ambientLight);
+
+            const hemiLight = new THREE.HemisphereLight(0x7dd3fc, 0x1e3a8a, 0.65);
+            scene.add(hemiLight);
+
+            const sunLight = new THREE.DirectionalLight(0xfffbeb, 1.35);
+            sunLight.position.set(160, 120, 110);
+            scene.add(sunLight);
+
+            const rimLight = new THREE.DirectionalLight(0x38bdf8, 0.45);
+            rimLight.position.set(-140, -90, -110);
+            scene.add(rimLight);
+
+            const unitBoxGeo = new THREE.BoxGeometry(1, 1, 1);
+
+            // Звездное небо (создается один раз)
+            function buildStars() {
+                const starCount = 1350;
+                const pos = new Float32Array(starCount * 3);
+                const col = new Float32Array(starCount * 3);
+                for (let i = 0; i < starCount; i++) {
+                    const u = Math.random();
+                    const v = Math.random();
+                    const theta = 2 * Math.PI * u;
+                    const phi = Math.acos(2 * v - 1);
+                    const dist = 260 + Math.random() * 260;
+                    pos[i * 3] = dist * Math.sin(phi) * Math.cos(theta);
+                    pos[i * 3 + 1] = dist * Math.sin(phi) * Math.sin(theta);
+                    pos[i * 3 + 2] = dist * Math.cos(phi);
+
+                    const t = Math.random();
+                    if (t < 0.7) { col[i * 3] = 0.92; col[i * 3 + 1] = 0.96; col[i * 3 + 2] = 1.0; }
+                    else if (t < 0.88) { col[i * 3] = 0.6; col[i * 3 + 1] = 0.85; col[i * 3 + 2] = 1.0; }
+                    else { col[i * 3] = 1.0; col[i * 3 + 1] = 0.88; col[i * 3 + 2] = 0.65; }
+                }
+                const geo = new THREE.BufferGeometry();
+                geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+                geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+                const mat = new THREE.PointsMaterial({ size: 1.85, vertexColors: true, transparent: true, opacity: 0.9 });
+                scene.add(new THREE.Points(geo, mat));
+            }
+            buildStars();
+
+            // Атмосферное гало (цвет меняется при переключении планет)
+            const atmosGeo = new THREE.SphereGeometry(CONFIG.planetRadius + 6.2, 36, 36);
+            const atmosMat = new THREE.ShaderMaterial({
+                uniforms: {
+                    glowColor: { value: new THREE.Color(0x38bdf8) }
+                },
+                vertexShader: `
+                    varying vec3 vNormal;
+                    varying vec3 vViewDir;
+                    void main() {
+                        vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+                        vNormal = normalize(normalMatrix * normal);
+                        vViewDir = normalize(-mvPos.xyz);
+                        gl_Position = projectionMatrix * mvPos;
+                    }
+                `,
+                fragmentShader: `
+                    uniform vec3 glowColor;
+                    varying vec3 vNormal;
+                    varying vec3 vViewDir;
+                    void main() {
+                        float rim = 1.0 - max(0.0, dot(vNormal, vViewDir));
+                        float intensity = pow(rim, 3.0) * 0.78;
+                        gl_FragColor = vec4(glowColor, intensity);
+                    }
+                `,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                side: THREE.BackSide,
+                depthWrite: false
+            });
+            scene.add(new THREE.Mesh(atmosGeo, atmosMat));
+
+            // =========================================================================
+            // 5. ПРОЦЕДУРНЫЙ ГЕНЕРАТОР 4 ВОКСЕЛЬНЫХ ПЛАНЕТ
+            // =========================================================================
+            const planetGroup = new THREE.Group();
+            scene.add(planetGroup);
+            const cloudsGroup = new THREE.Group();
+            scene.add(cloudsGroup);
+
+            function disposeGroup(group) {
+                while (group.children.length > 0) {
+                    const obj = group.children[0];
+                    group.remove(obj);
+                    if (obj.geometry && obj.geometry !== unitBoxGeo) obj.geometry.dispose();
+                    if (obj.material) {
+                        if (Array.isArray(obj.material)) obj.material.forEach(m => m.dispose());
+                        else obj.material.dispose();
+                    }
+                }
+            }
+
+            // Процедурный 3D-шум с разным сидом для каждой планеты
+            function getTerrainHeight(nx, ny, nz, seed = 0) {
+                const s = seed * 1.73;
+                const n1 = Math.sin(nx * 2.4 + 0.5 + s) * Math.cos(ny * 2.1 - 0.3 + s) * Math.sin(nz * 2.3 + 1.1 - s);
+                const n2 = Math.sin(nx * 4.8 - nz * 3.7 + 1.7 + s) * Math.cos(ny * 4.3 + nx * 2.1) * 0.48;
+                const n3 = Math.cos(nx * 8.5 + ny * 7.2 - nz * 6.9 + s) * 0.22;
+                return n1 + n2 + n3;
+            }
+
+            function buildPlanet(planetId) {
+                disposeGroup(planetGroup);
+                disposeGroup(cloudsGroup);
+
+                const cfg = PLANET_LIST.find(p => p.id === planetId) || PLANET_LIST[0];
+                const seed = PLANET_LIST.findIndex(p => p.id === cfg.id);
+                const R = CONFIG.planetRadius;
+
+                // Обновляем фон, атмосферу и освещение под планету
+                scene.background.setHex(cfg.bgHex);
+                atmosMat.uniforms.glowColor.value.setHex(cfg.atmosHex);
+                sunLight.color.setHex(cfg.sunHex);
+                hemiLight.color.setHex(cfg.hemiSky);
+                hemiLight.groundColor.setHex(cfg.hemiGround);
+                rimLight.color.setHex(cfg.rimHex);
+
+                // 1) Базовая гранёная сфера планеты
+                const rawGeo = new THREE.IcosahedronGeometry(R, 4);
+                const geo = rawGeo.index ? rawGeo.toNonIndexed() : rawGeo;
+                const posAttr = geo.attributes.position;
+                const colors = new Float32Array(posAttr.count * 3);
+                const tmpV = new THREE.Vector3();
+                const faceColor = new THREE.Color();
+
+                for (let i = 0; i < posAttr.count; i += 3) {
+                    let cx = 0, cy = 0, cz = 0;
+                    for (let k = 0; k < 3; k++) {
+                        cx += posAttr.getX(i + k);
+                        cy += posAttr.getY(i + k);
+                        cz += posAttr.getZ(i + k);
+                    }
+                    tmpV.set(cx / 3, cy / 3, cz / 3).normalize();
+                    const h = getTerrainHeight(tmpV.x, tmpV.y, tmpV.z, seed);
+
+                    if (planetId === 'earth') {
+                        if (h < -0.02) faceColor.setHex(h < -0.22 ? 0x1d4ed8 : 0x0284c7);
+                        else if (h < 0.07) faceColor.setHex(0xeab308);
+                        else if (h < 0.28) faceColor.setHex(h < 0.17 ? 0x22c55e : 0x16a34a);
+                        else faceColor.setHex(h < 0.42 ? 0x4d7c0f : 0x64748b);
+                    } else if (planetId === 'mars') {
+                        if (h < -0.15) faceColor.setHex(0x7c2d12);
+                        else if (h < 0.08) faceColor.setHex(0xb45309);
+                        else if (h < 0.28) faceColor.setHex(0xc2410c);
+                        else faceColor.setHex(0xea580c);
+                    } else if (planetId === 'arctic') {
+                        if (h < -0.05) faceColor.setHex(h < -0.22 ? 0x0e7490 : 0x0891b2);
+                        else if (h < 0.14) faceColor.setHex(0xbae6fd);
+                        else if (h < 0.32) faceColor.setHex(0xe2e8f0);
+                        else faceColor.setHex(0xf8fafc);
+                    } else {
+                        // Вулкан
+                        if (h < -0.04) faceColor.setHex(h < -0.22 ? 0xf97316 : 0xef4444);
+                        else if (h < 0.06) faceColor.setHex(0x7f1d1d);
+                        else if (h < 0.28) faceColor.setHex(0x292524);
+                        else faceColor.setHex(0x1c1917);
+                    }
+
+                    for (let k = 0; k < 3; k++) {
+                        tmpV.set(posAttr.getX(i + k), posAttr.getY(i + k), posAttr.getZ(i + k)).normalize();
+                        const vh = getTerrainHeight(tmpV.x, tmpV.y, tmpV.z, seed);
+                        let vElev = 0;
+                        if (planetId === 'mars') {
+                            vElev = Math.max(0, vh + 0.25) * 3.1;
+                        } else {
+                            vElev = vh < -0.03 ? 0 : Math.min(2.6, 0.4 + Math.max(0, vh) * 4.2);
+                        }
+                        posAttr.setXYZ(i + k, tmpV.x * (R + vElev), tmpV.y * (R + vElev), tmpV.z * (R + vElev));
+
+                        colors[(i + k) * 3] = faceColor.r;
+                        colors[(i + k) * 3 + 1] = faceColor.g;
+                        colors[(i + k) * 3 + 2] = faceColor.b;
+                    }
+                }
+
+                geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+                geo.computeVertexNormals();
+
+                const planetMat = new THREE.MeshStandardMaterial({
+                    vertexColors: true,
+                    flatShading: true,
+                    roughness: planetId === 'arctic' ? 0.45 : 0.86,
+                    metalness: planetId === 'arctic' ? 0.12 : 0.06,
+                    emissive: planetId === 'volcano' ? 0x3b0a04 : 0x000000,
+                    emissiveIntensity: planetId === 'volcano' ? 0.45 : 0
+                });
+                planetGroup.add(new THREE.Mesh(geo, planetMat));
+
+                // 2) Воксельные рельефы (InstancedMesh для 60 FPS)
+                const voxelBlocks = [];
+                const dummyUp = new THREE.Vector3(0, 1, 0);
+                const tmpQuat = new THREE.Quaternion();
+                const spinQuat = new THREE.Quaternion();
+                const sampleCount = 1150;
+                const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+
+                for (let i = 0; i < sampleCount; i++) {
+                    const y = 1 - (i / (sampleCount - 1)) * 2;
+                    const radY = Math.sqrt(Math.max(0, 1 - y * y));
+                    const theta = goldenAngle * i;
+                    const normal = new THREE.Vector3(Math.cos(theta) * radY, y, Math.sin(theta) * radY).normalize();
+                    const h = getTerrainHeight(normal.x, normal.y, normal.z, seed);
+
+                    const surfaceR = R + 0.4 + Math.min(2.2, Math.max(0, h) * 3.8);
+                    tmpQuat.setFromUnitVectors(dummyUp, normal);
+                    spinQuat.setFromAxisAngle(dummyUp, (i * 1.37) % (Math.PI * 2));
+                    const baseQuat = tmpQuat.clone().multiply(spinQuat);
+
+                    if (planetId === 'earth') {
+                        if (h < 0.01) continue;
+                        if (h > 0.34) {
+                            // Кубическая гора со снежной вершиной
+                            const w = 2.6 + (i % 3) * 0.55;
+                            const bh = 2.2 + (i % 4) * 0.45;
+                            voxelBlocks.push({ pos: normal.clone().multiplyScalar(surfaceR + bh * 0.4), quat: baseQuat, scale: new THREE.Vector3(w, bh, w), color: 0x64748b });
+                            voxelBlocks.push({ pos: normal.clone().multiplyScalar(surfaceR + bh * 0.85 + bh * 0.25), quat: baseQuat, scale: new THREE.Vector3(w * 0.64, bh * 0.68, w * 0.64), color: 0x94a3b8 });
+                            voxelBlocks.push({ pos: normal.clone().multiplyScalar(surfaceR + bh * 1.45), quat: baseQuat, scale: new THREE.Vector3(w * 0.42, 1.05, w * 0.42), color: 0xf8fafc });
+                        } else if (h > 0.11) {
+                            if (i % 3 === 0) {
+                                voxelBlocks.push({ pos: normal.clone().multiplyScalar(surfaceR + 0.45), quat: baseQuat, scale: new THREE.Vector3(2.4, 1.2, 2.4), color: i % 2 === 0 ? 0x22c55e : 0x16a34a });
+                            } else if (i % 2 === 0) {
+                                voxelBlocks.push({ pos: normal.clone().multiplyScalar(surfaceR + 0.65), quat: baseQuat, scale: new THREE.Vector3(0.45, 1.35, 0.45), color: 0x78350f });
+                                voxelBlocks.push({ pos: normal.clone().multiplyScalar(surfaceR + 1.55), quat: baseQuat, scale: new THREE.Vector3(1.45, 1.25, 1.45), color: i % 4 === 0 ? 0x15803d : 0x22c55e });
+                                voxelBlocks.push({ pos: normal.clone().multiplyScalar(surfaceR + 2.35), quat: baseQuat, scale: new THREE.Vector3(0.85, 0.75, 0.85), color: 0x4ade80 });
+                            }
+                        } else if (i % 4 === 0) {
+                            voxelBlocks.push({ pos: normal.clone().multiplyScalar(surfaceR + 0.25), quat: baseQuat, scale: new THREE.Vector3(2.1, 0.75, 2.1), color: 0xfacc15 });
+                        }
+                    } else if (planetId === 'mars') {
+                        if (h > 0.26) {
+                            // Ступенчатые марсианские плато (месы)
+                            const w = 3.2 + (i % 3) * 0.6;
+                            voxelBlocks.push({ pos: normal.clone().multiplyScalar(surfaceR + 0.8), quat: baseQuat, scale: new THREE.Vector3(w, 1.7, w), color: 0xb45309 });
+                            voxelBlocks.push({ pos: normal.clone().multiplyScalar(surfaceR + 2.0), quat: baseQuat, scale: new THREE.Vector3(w * 0.72, 1.35, w * 0.72), color: 0xd97706 });
+                            voxelBlocks.push({ pos: normal.clone().multiplyScalar(surfaceR + 2.95), quat: baseQuat, scale: new THREE.Vector3(w * 0.48, 0.85, w * 0.48), color: 0xf59e0b });
+                        } else if (h < -0.18 && i % 3 === 0) {
+                            // Темные железные валуны в кратерах
+                            voxelBlocks.push({ pos: normal.clone().multiplyScalar(R + 0.55), quat: baseQuat, scale: new THREE.Vector3(1.8, 1.3, 1.6), color: 0x44403c });
+                        } else if (i % 4 === 0) {
+                            // Красные скалы
+                            voxelBlocks.push({ pos: normal.clone().multiplyScalar(surfaceR + 0.5), quat: baseQuat, scale: new THREE.Vector3(1.7, 1.2 + (i % 3) * 0.4, 1.7), color: i % 2 === 0 ? 0x9a3412 : 0x57534e });
+                        }
+                    } else if (planetId === 'arctic') {
+                        if (h < -0.02) {
+                            // Плавающие кубические льдины в океане
+                            if (i % 6 === 0) {
+                                voxelBlocks.push({ pos: normal.clone().multiplyScalar(R + 0.25), quat: baseQuat, scale: new THREE.Vector3(2.8, 0.5, 2.4), color: 0xe0f2fe });
+                            }
+                            continue;
+                        }
+                        if (h > 0.28) {
+                            // Высокие кристаллические ледяные шпили
+                            const spireH = 3.2 + (i % 4) * 0.85;
+                            voxelBlocks.push({ pos: normal.clone().multiplyScalar(surfaceR + spireH * 0.45), quat: baseQuat, scale: new THREE.Vector3(1.65, spireH, 1.65), color: 0x38bdf8 });
+                            voxelBlocks.push({ pos: normal.clone().multiplyScalar(surfaceR + spireH * 0.92), quat: baseQuat, scale: new THREE.Vector3(0.95, 1.4, 0.95), color: 0x67e8f9 });
+                            voxelBlocks.push({ pos: normal.clone().multiplyScalar(surfaceR + spireH * 1.15), quat: baseQuat, scale: new THREE.Vector3(0.45, 0.9, 0.45), color: 0xf8fafc });
+                        } else if (i % 3 === 0) {
+                            // Снежные глыбы и торосы
+                            voxelBlocks.push({ pos: normal.clone().multiplyScalar(surfaceR + 0.55), quat: baseQuat, scale: new THREE.Vector3(2.3, 1.25, 2.3), color: i % 2 === 0 ? 0xf8fafc : 0xbae6fd });
+                        }
+                    } else {
+                        // Вулкан
+                        if (h < -0.03) continue;
+                        if (h > 0.30) {
+                            // Кубический вулкан с раскаленной вершиной
+                            const w = 3.1 + (i % 3) * 0.5;
+                            voxelBlocks.push({ pos: normal.clone().multiplyScalar(surfaceR + 1.0), quat: baseQuat, scale: new THREE.Vector3(w, 2.1, w), color: 0x292524 });
+                            voxelBlocks.push({ pos: normal.clone().multiplyScalar(surfaceR + 2.4), quat: baseQuat, scale: new THREE.Vector3(w * 0.66, 1.6, w * 0.66), color: 0x1c1917 });
+                            voxelBlocks.push({ pos: normal.clone().multiplyScalar(surfaceR + 3.35), quat: baseQuat, scale: new THREE.Vector3(w * 0.38, 0.65, w * 0.38), color: 0xf97316 });
+                            voxelBlocks.push({ pos: normal.clone().multiplyScalar(surfaceR + 3.75), quat: baseQuat, scale: new THREE.Vector3(w * 0.22, 0.35, w * 0.22), color: 0xfacc15 });
+                        } else if (i % 3 === 0) {
+                            // Базальтовые колонны и обсидиан
+                            voxelBlocks.push({ pos: normal.clone().multiplyScalar(surfaceR + 0.7), quat: baseQuat, scale: new THREE.Vector3(1.5, 1.6 + (i % 3) * 0.5, 1.5), color: i % 2 === 0 ? 0x1c1917 : 0x44403c });
+                        }
+                    }
+                }
+
+                if (voxelBlocks.length > 0) {
+                    const terrainMat = new THREE.MeshStandardMaterial({
+                        flatShading: true,
+                        roughness: planetId === 'arctic' ? 0.35 : 0.88,
+                        metalness: planetId === 'arctic' ? 0.15 : 0.05
+                    });
+                    const terrainInstanced = new THREE.InstancedMesh(unitBoxGeo, terrainMat, voxelBlocks.length);
+                    const mat4 = new THREE.Matrix4();
+                    const col = new THREE.Color();
+                    for (let i = 0; i < voxelBlocks.length; i++) {
+                        const b = voxelBlocks[i];
+                        mat4.compose(b.pos, b.quat, b.scale);
+                        terrainInstanced.setMatrixAt(i, mat4);
+                        col.setHex(b.color);
+                        terrainInstanced.setColorAt(i, col);
+                    }
+                    terrainInstanced.instanceMatrix.needsUpdate = true;
+                    if (terrainInstanced.instanceColor) terrainInstanced.instanceColor.needsUpdate = true;
+                    planetGroup.add(terrainInstanced);
+                }
+
+                // 3) Облака / Пыль / Ледяной туман / Пепел
+                const cloudBlocks = [];
+                const cloudCount = 34;
+                const cloudColor = planetId === 'earth' ? 0xf8fafc
+                    : planetId === 'mars' ? 0xfdba74
+                    : planetId === 'arctic' ? 0xe0f2fe
+                    : 0x57534e;
+                const cloudOpacity = planetId === 'mars' ? 0.55 : (planetId === 'volcano' ? 0.72 : 0.84);
+
+                for (let i = 0; i < cloudCount; i++) {
+                    const y = 1 - ((i + 0.5) / cloudCount) * 2;
+                    const rad = Math.sqrt(Math.max(0, 1 - y * y));
+                    const ang = goldenAngle * i * 2.1;
+                    const normal = new THREE.Vector3(Math.cos(ang) * rad, y, Math.sin(ang) * rad).normalize();
+                    const alt = R + 12.6 + (i % 3) * 1.1;
+
+                    tmpQuat.setFromUnitVectors(dummyUp, normal);
+                    spinQuat.setFromAxisAngle(dummyUp, i * 0.9);
+                    const q = tmpQuat.clone().multiply(spinQuat);
+
+                    const offsets = [
+                        { x: 0, y: 0, z: 0, sx: 3.4, sy: 1.25, sz: 2.2 },
+                        { x: 1.8, y: -0.15, z: 0.4, sx: 2.2, sy: 1.0, sz: 1.8 },
+                        { x: -1.7, y: -0.2, z: -0.3, sx: 2.1, sy: 0.95, sz: 1.7 },
+                        { x: 0.2, y: 0.6, z: -0.1, sx: 1.9, sy: 0.9, sz: 1.5 }
+                    ];
+
+                    const basePos = normal.clone().multiplyScalar(alt);
+                    for (const o of offsets) {
+                        const localOff = new THREE.Vector3(o.x, o.y, o.z).applyQuaternion(q);
+                        cloudBlocks.push({
+                            pos: basePos.clone().add(localOff),
+                            quat: q,
+                            scale: new THREE.Vector3(o.sx, o.sy, o.sz)
+                        });
+                    }
+                }
+
+                const cloudMat = new THREE.MeshStandardMaterial({
+                    color: cloudColor,
+                    flatShading: true,
+                    transparent: true,
+                    opacity: cloudOpacity,
+                    roughness: 0.95
+                });
+                const cloudsInstanced = new THREE.InstancedMesh(unitBoxGeo, cloudMat, cloudBlocks.length);
+                const mat4 = new THREE.Matrix4();
+                for (let i = 0; i < cloudBlocks.length; i++) {
+                    const cb = cloudBlocks[i];
+                    mat4.compose(cb.pos, cb.quat, cb.scale);
+                    cloudsInstanced.setMatrixAt(i, mat4);
+                }
+                cloudsInstanced.instanceMatrix.needsUpdate = true;
+                cloudsGroup.add(cloudsInstanced);
+            }
+
+            // =========================================================================
+            // 6. КУБИЧЕСКИЕ 3D-МОДЕЛИ 4 ИГРАБЕЛЬНЫХ САМОЛЕТОВ + ВРАГИ + БОНУСЫ
+            // =========================================================================
+            function addBox(group, w, h, d, x, y, z, color, emissive = 0x000000, emissiveIntensity = 0) {
+                const mat = new THREE.MeshStandardMaterial({
+                    color,
+                    flatShading: true,
+                    roughness: 0.48,
+                    metalness: 0.16,
+                    emissive,
+                    emissiveIntensity
+                });
+                const mesh = new THREE.Mesh(unitBoxGeo, mat);
+                mesh.scale.set(w, h, d);
+                mesh.position.set(x, y, z);
+                group.add(mesh);
+                return mesh;
+            }
+
+            function createAircraftModel(aircraftId) {
+                const root = new THREE.Group();
+                const body = new THREE.Group();
+                root.add(body);
+
+                const props = [];  // Вращающиеся пропеллеры
+                const flames = []; // Реактивные сопла
+
+                if (aircraftId === 'biplane') {
+                    // Желто-красный классический биплан с двумя крыльями и носовым пропеллером
+                    addBox(body, 0.72, 0.62, 2.4, 0, 0, 0.1, 0xfacc15);
+                    addBox(body, 0.62, 0.56, 0.65, 0, 0, -1.35, 0xef4444);
+                    // Кабина
+                    addBox(body, 0.48, 0.34, 0.62, 0, 0.38, 0.15, 0x1e293b);
+                    // Нижнее и верхнее крылья
+                    addBox(body, 3.55, 0.14, 0.82, 0, -0.22, -0.2, 0xfacc15);
+                    addBox(body, 3.65, 0.14, 0.82, 0, 0.62, -0.25, 0xef4444);
+                    // Стойки между крыльями
+                    addBox(body, 0.1, 0.84, 0.1, 1.25, 0.2, -0.22, 0x78350f);
+                    addBox(body, 0.1, 0.84, 0.1, -1.25, 0.2, -0.22, 0x78350f);
+                    // Хвост
+                    addBox(body, 1.5, 0.12, 0.52, 0, 0.05, 1.18, 0xfacc15);
+                    addBox(body, 0.14, 0.68, 0.55, 0, 0.42, 1.15, 0xef4444);
+                    // Носовой пропеллер
+                    const propHub = new THREE.Group();
+                    propHub.position.set(0, 0, -1.72);
+                    addBox(propHub, 1.55, 0.14, 0.08, 0, 0, 0, 0xf8fafc);
+                    addBox(propHub, 0.14, 1.55, 0.08, 0, 0, 0, 0xf8fafc);
+                    addBox(propHub, 0.22, 0.22, 0.2, 0, 0, -0.04, 0x1e293b);
+                    body.add(propHub);
+                    props.push(propHub);
+                } else if (aircraftId === 'interceptor') {
+                    // Бело-голубой сверхзвуковой перехватчик с двойным форсажем
+                    addBox(body, 0.66, 0.48, 3.05, 0, 0, 0.05, 0xf8fafc);
+                    addBox(body, 0.36, 0.32, 1.0, 0, -0.03, -1.85, 0x06b6d4);
+                    // Стеклянный фонарь
+                    addBox(body, 0.44, 0.32, 1.05, 0, 0.32, -0.55, 0x38bdf8, 0x0ea5e9, 0.55);
+                    // Стреловидные крылья
+                    addBox(body, 3.4, 0.14, 0.85, 0, -0.04, 0.35, 0xe2e8f0);
+                    addBox(body, 2.2, 0.14, 0.85, 0, -0.04, -0.25, 0xf8fafc);
+                    addBox(body, 0.85, 0.16, 0.45, 1.25, 0.0, 0.42, 0x06b6d4);
+                    addBox(body, 0.85, 0.16, 0.45, -1.25, 0.0, 0.42, 0x06b6d4);
+                    // Двойной киль
+                    addBox(body, 0.12, 0.72, 0.62, 0.48, 0.38, 1.25, 0x0284c7);
+                    addBox(body, 0.12, 0.72, 0.62, -0.48, 0.38, 1.25, 0x0284c7);
+                    // Двойной форсаж
+                    flames.push(addBox(body, 0.26, 0.24, 0.95, 0.22, -0.02, 1.92, 0x38bdf8, 0x38bdf8, 1.8));
+                    flames.push(addBox(body, 0.26, 0.24, 0.95, -0.22, -0.02, 1.92, 0x38bdf8, 0x38bdf8, 1.8));
+                } else if (aircraftId === 'gunship') {
+                    // Тяжелый оливково-серый двухмоторный штурмовик
+                    addBox(body, 1.05, 0.78, 2.75, 0, 0.04, 0.08, 0x4d7c0f);
+                    addBox(body, 0.82, 0.62, 0.75, 0, 0.0, -1.52, 0x475569);
+                    // Бронированная кабина
+                    addBox(body, 0.72, 0.4, 0.92, 0, 0.5, -0.35, 0x94a3b8, 0x38bdf8, 0.25);
+                    // Мощные прямые крылья
+                    addBox(body, 4.25, 0.22, 1.15, 0, 0.04, 0.05, 0x3f6212);
+                    // Два моторных гондолы на крыльях
+                    addBox(body, 0.48, 0.48, 1.35, 1.22, -0.05, -0.15, 0x475569);
+                    addBox(body, 0.48, 0.48, 1.35, -1.22, -0.05, -0.15, 0x475569);
+                    // Два вращающихся пропеллера
+                    [-1.22, 1.22].forEach(px => {
+                        const prop = new THREE.Group();
+                        prop.position.set(px, -0.05, -0.88);
+                        addBox(prop, 1.25, 0.14, 0.08, 0, 0, 0, 0xe2e8f0);
+                        addBox(prop, 0.14, 1.25, 0.08, 0, 0, 0, 0xe2e8f0);
+                        body.add(prop);
+                        props.push(prop);
+                    });
+                    // Двойной хвост
+                    addBox(body, 2.0, 0.18, 0.62, 0, 0.12, 1.3, 0x475569);
+                    addBox(body, 0.18, 0.78, 0.62, 0.82, 0.46, 1.3, 0x4d7c0f);
+                    addBox(body, 0.18, 0.78, 0.62, -0.82, 0.46, 1.3, 0x4d7c0f);
+                } else {
+                    // Призрак — матово-черный стелс с неоново-фиолетовыми гранями (дельта-крыло)
+                    addBox(body, 0.95, 0.36, 2.6, 0, 0, 0.15, 0x0f172a);
+                    addBox(body, 0.56, 0.26, 0.95, 0, -0.02, -1.5, 0x1e293b);
+                    // Дельта-крыло ступеньками
+                    addBox(body, 2.1, 0.14, 1.15, 0, -0.04, -0.15, 0x1e293b);
+                    addBox(body, 3.3, 0.14, 0.95, 0, -0.04, 0.55, 0x0f172a);
+                    addBox(body, 4.0, 0.12, 0.55, 0, -0.04, 1.0, 0x1e293b);
+                    // Неоновые фиолетовые акценты
+                    addBox(body, 0.42, 0.24, 0.85, 0, 0.24, -0.45, 0xa855f7, 0xa855f7, 0.9);
+                    addBox(body, 3.85, 0.15, 0.12, 0, 0.0, 1.22, 0xc084fc, 0xa855f7, 1.1);
+                    // Скошенные кили
+                    addBox(body, 0.12, 0.55, 0.65, 0.75, 0.25, 1.05, 0x1e293b);
+                    addBox(body, 0.12, 0.55, 0.65, -0.75, 0.25, 1.05, 0x1e293b);
+                    // Неоновые сопла
+                    flames.push(addBox(body, 0.32, 0.16, 0.78, 0.3, -0.02, 1.62, 0xd946ef, 0xa855f7, 1.9));
+                    flames.push(addBox(body, 0.32, 0.16, 0.78, -0.3, -0.02, 1.62, 0xd946ef, 0xa855f7, 1.9));
+                }
+
+                // Энергетический щит / аура бочки
+                const shieldMat = new THREE.MeshBasicMaterial({
+                    color: 0x38bdf8,
+                    transparent: true,
+                    opacity: 0,
+                    wireframe: false
+                });
+                const shield = new THREE.Mesh(new THREE.BoxGeometry(4.4, 1.65, 3.8), shieldMat);
+                body.add(shield);
+
+                return { root, body, props, flames, shield, shieldMat };
+            }
+
+            // Красный истребитель-пулеметчик
+            function createInterceptorEnemyModel() {
+                const root = new THREE.Group();
+                const body = new THREE.Group();
+                root.add(body);
+
+                addBox(body, 0.68, 0.5, 2.5, 0, 0, 0.05, 0xdc2626);
+                addBox(body, 0.42, 0.38, 0.75, 0, 0, -1.5, 0x991b1b);
+                addBox(body, 0.44, 0.32, 0.82, 0, 0.32, -0.35, 0xfbbf24, 0xf59e0b, 0.35);
+                addBox(body, 3.3, 0.16, 0.85, 0, 0, 0.15, 0xef4444);
+                addBox(body, 0.22, 0.22, 0.9, 1.05, -0.1, -0.4, 0x334155);
+                addBox(body, 0.22, 0.22, 0.9, -1.05, -0.1, -0.4, 0x334155);
+                addBox(body, 1.45, 0.14, 0.5, 0, 0.02, 1.12, 0x991b1b);
+                addBox(body, 0.16, 0.62, 0.52, 0, 0.36, 1.1, 0xef4444);
+                addBox(body, 0.38, 0.28, 0.65, 0, 0, 1.58, 0xfb923c, 0xf97316, 1.4);
+
+                return { root, body };
+            }
+
+            // Темно-фиолетовый ракетоносец
+            function createMissileBomberModel() {
+                const root = new THREE.Group();
+                const body = new THREE.Group();
+                root.add(body);
+
+                addBox(body, 0.92, 0.64, 2.85, 0, 0, 0.05, 0x581c87);
+                addBox(body, 0.58, 0.44, 0.85, 0, 0, -1.65, 0x3b0764);
+                addBox(body, 0.54, 0.38, 0.95, 0, 0.4, -0.4, 0xf43f5e, 0xe11d48, 0.55);
+                addBox(body, 4.1, 0.2, 1.15, 0, 0, 0.25, 0x6b21a8);
+                addBox(body, 0.32, 0.32, 1.1, 1.35, -0.22, 0.1, 0xf8fafc);
+                addBox(body, 0.32, 0.32, 1.1, -1.35, -0.22, 0.1, 0xf8fafc);
+                addBox(body, 0.34, 0.34, 0.35, 1.35, -0.22, -0.55, 0xef4444);
+                addBox(body, 0.34, 0.34, 0.35, -1.35, -0.22, -0.55, 0xef4444);
+                addBox(body, 1.8, 0.16, 0.6, 0, 0.05, 1.3, 0x4c1d95);
+                addBox(body, 0.18, 0.72, 0.6, 0.65, 0.4, 1.28, 0x7e22ce);
+                addBox(body, 0.18, 0.72, 0.6, -0.65, 0.4, 1.28, 0x7e22ce);
+                addBox(body, 0.52, 0.34, 0.7, 0, 0, 1.75, 0xf43f5e, 0xf43f5e, 1.5);
+
+                return { root, body };
+            }
+
+            // Кубическая ракета
+            function createMissileModel() {
+                const group = new THREE.Group();
+                addBox(group, 0.32, 0.32, 1.35, 0, 0, 0, 0xf8fafc);
+                addBox(group, 0.34, 0.34, 0.38, 0, 0, -0.78, 0xef4444, 0xef4444, 0.6);
+                addBox(group, 0.68, 0.08, 0.35, 0, 0, 0.48, 0xef4444);
+                addBox(group, 0.08, 0.68, 0.35, 0, 0, 0.48, 0xef4444);
+                addBox(group, 0.24, 0.24, 0.45, 0, 0, 0.85, 0xfb923c, 0xf97316, 1.6);
+                return group;
+            }
+
+            // Бонусы в небе: Ремонт (+1 HP) и Щит
+            function createPowerupModel(type) {
+                const group = new THREE.Group();
+                if (type === 'repair') {
+                    // Зеленый воксельный крест ремонта
+                    addBox(group, 1.65, 0.55, 0.55, 0, 0, 0, 0x22c55e, 0x22c55e, 0.9);
+                    addBox(group, 0.55, 1.65, 0.55, 0, 0, 0, 0x22c55e, 0x22c55e, 0.9);
+                    addBox(group, 0.55, 0.55, 1.65, 0, 0, 0, 0x4ade80, 0x22c55e, 0.9);
+                } else {
+                    // Голубой энергокристалл щита
+                    addBox(group, 1.25, 1.25, 1.25, 0, 0, 0, 0x06b6d4, 0x38bdf8, 1.0);
+                    const ring = addBox(group, 2.05, 0.22, 2.05, 0, 0, 0, 0xbae6fd, 0x38bdf8, 0.8);
+                    ring.rotation.z = Math.PI / 4;
+                }
+                return group;
+            }
+
+            const bulletMat = new THREE.MeshBasicMaterial({ color: 0xfde047 });
+            const bulletGeo = new THREE.BoxGeometry(0.24, 0.24, 1.35);
+
+            // =========================================================================
+            // 7. СФЕРИЧЕСКАЯ МАТЕМАТИКА (БЕЗ GIMBAL LOCK НА ПОЛЮСАХ)
+            // =========================================================================
+            const _tmpRight = new THREE.Vector3();
+            const _tmpMat = new THREE.Matrix4();
+            const _tmpUp = new THREE.Vector3();
+            const _tmpBack = new THREE.Vector3();
+            const _tmpToTarget = new THREE.Vector3();
+
+            function advanceOnSphere(entity, speed, dt, altitude = CONFIG.flightAltitude) {
+                const dTheta = (speed * dt) / altitude;
+                const cosT = Math.cos(dTheta);
+                const sinT = Math.sin(dTheta);
+
+                const up = _tmpUp.copy(entity.pos).normalize();
+                const oldF = entity.forward;
+
+                const nx = up.x * cosT + oldF.x * sinT;
+                const ny = up.y * cosT + oldF.y * sinT;
+                const nz = up.z * cosT + oldF.z * sinT;
+
+                const fx = oldF.x * cosT - up.x * sinT;
+                const fy = oldF.y * cosT - up.y * sinT;
+                const fz = oldF.z * cosT - up.z * sinT;
+
+                entity.pos.set(nx, ny, nz).normalize().multiplyScalar(altitude);
+                entity.forward.set(fx, fy, fz);
+
+                const newUp = _tmpUp.copy(entity.pos).normalize();
+                entity.forward.addScaledVector(newUp, -entity.forward.dot(newUp)).normalize();
+            }
+
+            function yawOnSphere(entity, angle) {
+                const up = _tmpUp.copy(entity.pos).normalize();
+                entity.forward.applyAxisAngle(up, angle);
+                entity.forward.addScaledVector(up, -entity.forward.dot(up)).normalize();
+            }
+
+            function syncObjectToSphere(obj, pos, forward) {
+                obj.position.copy(pos);
+                const up = _tmpUp.copy(pos).normalize();
+                const right = _tmpRight.crossVectors(forward, up).normalize();
+                const back = _tmpBack.copy(forward).negate();
+                _tmpMat.makeBasis(right, up, back);
+                obj.quaternion.setFromRotationMatrix(_tmpMat);
+            }
+
+            function getTurnAngleToTarget(entity, targetPos) {
+                const up = _tmpUp.copy(entity.pos).normalize();
+                _tmpToTarget.copy(targetPos).sub(entity.pos);
+                _tmpToTarget.addScaledVector(up, -_tmpToTarget.dot(up));
+                if (_tmpToTarget.lengthSq() < 1e-6) return 0;
+                _tmpToTarget.normalize();
+
+                const right = _tmpRight.crossVectors(entity.forward, up).normalize();
+                const dotF = THREE.MathUtils.clamp(entity.forward.dot(_tmpToTarget), -1, 1);
+                const dotR = _tmpToTarget.dot(right);
+                return Math.atan2(-dotR, dotF);
+            }
+
+            // =========================================================================
+            // 8. СОСТОЯНИЕ ИГРЫ, ВЫБОР САМОЛЕТА И ПЛАНЕТЫ
+            // =========================================================================
+            let gameState = 'MENU'; // 'MENU' | 'PLAYING' | 'GAMEOVER'
+            let selectedAircraftId = 'biplane';
+            let selectedPlanetId = 'earth';
+
+            let highScore = 0;
+            try {
+                highScore = parseInt(localStorage.getItem(STORAGE_KEY) || '0', 10) || 0;
+            } catch (e) {}
+
+            function getCurrentAircraft() {
+                return AIRCRAFT_LIST.find(a => a.id === selectedAircraftId) || AIRCRAFT_LIST[0];
+            }
+
+            function getCurrentPlanet() {
+                return PLANET_LIST.find(p => p.id === selectedPlanetId) || PLANET_LIST[0];
+            }
+
+            const state = {
+                score: 0,
+                survivalTime: 0,
+                dodgesCount: 0,
+                wave: 1,
+                spawnTimer: 1.0,
+                powerupTimer: 7.5,
+                screenShake: 0,
+                hitFlashTimer: 0,
+                menuAngle: 0.4,
+                menuPitch: 0.25
+            };
+
+            let playerModel = null;
+            const player = {
+                pos: new THREE.Vector3(0, 0, CONFIG.flightAltitude),
+                forward: new THREE.Vector3(0, 1, 0),
+                speed: 21,
+                bankAngle: 0,
+                hp: 3,
+                maxHp: 3,
+                shieldTimer: 0,
+                invulnTimer: 0,
+                isDodging: false,
+                dodgeTimer: 0,
+                dodgeCooldownTimer: 0,
+                dodgeSpinDir: 1,
+                trailTimer: 0
+            };
+
+            function rebuildPlayerModel() {
+                if (playerModel) {
+                    scene.remove(playerModel.root);
+                }
+                playerModel = createAircraftModel(selectedAircraftId);
+                scene.add(playerModel.root);
+                syncObjectToSphere(playerModel.root, player.pos, player.forward);
+            }
+
+            let enemies = [];
+            let bullets = [];
+            let missiles = [];
+            let powerups = [];
+            let particles = [];
+
+            // =========================================================================
+            // 9. РЕНДЕР КАРТОЧЕК МЕНЮ (UI8)
+            // =========================================================================
+            function renderStatBars(container, value, colorClass) {
+                container.innerHTML = '';
+                for (let i = 1; i <= 5; i++) {
+                    const seg = document.createElement('div');
+                    seg.className = `w-5 h-1.5 rounded-full transition-all duration-200 ${i <= value ? colorClass : 'bg-white/10'}`;
+                    container.appendChild(seg);
+                }
+            }
+
+            function updateMenuUI() {
+                const ac = getCurrentAircraft();
+                const pl = getCurrentPlanet();
+
+                selectedPlanePerk.textContent = ac.perk;
+                selectedPlanetTag.textContent = pl.tag;
+                renderStatBars(statSpeed, ac.speedRating, 'bg-sky-400');
+                renderStatBars(statAgility, ac.agilityRating, 'bg-cyan-300');
+                renderStatBars(statArmor, ac.armorRating, 'bg-emerald-400');
+                statRollCd.textContent = ac.dodgeCooldown.toFixed(2) + 'с';
+
+                // Карточки самолетов
+                aircraftGrid.innerHTML = '';
+                AIRCRAFT_LIST.forEach(item => {
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = `ui8-card rounded-2xl p-2.5 text-left cursor-pointer ${item.id === selectedAircraftId ? 'active' : ''}`;
+                    btn.innerHTML = `
+                        <div class="flex items-center gap-2">
+                            <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background:${item.swatch}; box-shadow: 0 0 8px ${item.swatch};"></span>
+                            <span class="font-bold text-xs sm:text-sm text-white truncate">${item.name}</span>
+                        </div>
+                        <div class="text-[10px] text-slate-400 mt-0.5 pl-4">${item.subtitle}</div>
+                    `;
+                    btn.addEventListener('click', () => {
+                        sound.init();
+                        sound.playClick();
+                        selectedAircraftId = item.id;
+                        rebuildPlayerModel();
+                        updateMenuUI();
+                    });
+                    aircraftGrid.appendChild(btn);
+                });
+
+                // Карточки планет (для ПК и мобильных)
+                [planetGridDesktop, planetGridMobile].forEach(grid => {
+                    grid.innerHTML = '';
+                    PLANET_LIST.forEach(item => {
+                        const btn = document.createElement('button');
+                        btn.type = 'button';
+                        btn.className = `ui8-card rounded-2xl p-2.5 text-left cursor-pointer ${item.id === selectedPlanetId ? 'active' : ''}`;
+                        btn.innerHTML = `
+                            <div class="flex items-center gap-2">
+                                <span class="w-3 h-3 rounded-full shrink-0" style="background:${item.swatch};"></span>
+                                <span class="font-bold text-xs sm:text-sm text-white truncate">${item.name}</span>
+                            </div>
+                            <div class="text-[10px] text-slate-400 mt-0.5 pl-5 truncate">${item.tag}</div>
+                        `;
+                        btn.addEventListener('click', () => {
+                            sound.init();
+                            sound.playClick();
+                            if (selectedPlanetId !== item.id) {
+                                selectedPlanetId = item.id;
+                                buildPlanet(selectedPlanetId);
+                                updateMenuUI();
+                            }
+                        });
+                        grid.appendChild(btn);
+                    });
+                });
+            }
+
+            // =========================================================================
+            // 10. УПРАВЛЕНИЕ (КЛАВИАТУРА, МЫШЬ, ТАЧ И КНОПКИ)
+            // =========================================================================
+            const keys = { left: false, right: false, up: false, down: false };
+            const touchBtns = { left: false, right: false };
+            const lastTapTime = { left: 0, right: 0, pointer: 0 };
+
+            const pointer = {
+                active: false,
+                steerX: 0,
+                throttleY: 0,
+                menuDrag: false,
+                lastX: 0,
+                lastY: 0
+            };
+
+            function mapKey(code) {
+                if (code === 'KeyA' || code === 'ArrowLeft') return 'left';
+                if (code === 'KeyD' || code === 'ArrowRight') return 'right';
+                if (code === 'KeyW' || code === 'ArrowUp') return 'up';
+                if (code === 'KeyS' || code === 'ArrowDown') return 'down';
+                if (code === 'Space' || code === 'ShiftLeft' || code === 'ShiftRight') return 'roll';
+                return null;
+            }
+
+            window.addEventListener('keydown', (e) => {
+                if ((gameState === 'MENU' || gameState === 'GAMEOVER') && e.code === 'Enter') {
+                    e.preventDefault();
+                    startGame();
+                    return;
+                }
+                if (gameState === 'PLAYING' && e.code === 'Escape') {
+                    e.preventDefault();
+                    returnToMenu();
+                    return;
+                }
+
+                const k = mapKey(e.code);
+                if (!k) return;
+                e.preventDefault();
+
+                if (!e.repeat && gameState === 'PLAYING') {
+                    const now = performance.now();
+                    if (k === 'roll') {
+                        const dir = keys.left ? 1 : -1;
+                        triggerBarrelRoll(dir);
+                    } else if (k === 'left' || k === 'right') {
+                        if (now - lastTapTime[k] <= CONFIG.doubleTapWindow) {
+                            triggerBarrelRoll(k === 'left' ? 1 : -1);
+                            lastTapTime[k] = 0;
+                        } else {
+                            lastTapTime[k] = now;
+                        }
+                    }
+                }
+
+                if (k !== 'roll') keys[k] = true;
+            });
+
+            window.addEventListener('keyup', (e) => {
+                const k = mapKey(e.code);
+                if (k && k !== 'roll') keys[k] = false;
+            });
+
+            window.addEventListener('blur', () => {
+                keys.left = keys.right = keys.up = keys.down = false;
+                touchBtns.left = touchBtns.right = false;
+                pointer.active = false;
+                pointer.menuDrag = false;
+                pointer.steerX = 0;
+                pointer.throttleY = 0;
+            });
+
+            function updatePointerSteer(clientX, clientY) {
+                const nx = (clientX / window.innerWidth) * 2 - 1;
+                const ny = (clientY / window.innerHeight) * 2 - 1;
+                pointer.steerX = Math.abs(nx) < 0.08 ? 0 : THREE.MathUtils.clamp(nx * 1.45, -1, 1);
+                pointer.throttleY = THREE.MathUtils.clamp(-ny, -1, 1);
+            }
+
+            renderer.domElement.addEventListener('pointerdown', (e) => {
+                if (gameState === 'MENU') {
+                    pointer.menuDrag = true;
+                    pointer.lastX = e.clientX;
+                    pointer.lastY = e.clientY;
+                    return;
+                }
+                if (gameState !== 'PLAYING') return;
+                sound.init();
+                pointer.active = true;
+                updatePointerSteer(e.clientX, e.clientY);
+
+                const now = performance.now();
+                if (now - lastTapTime.pointer <= CONFIG.doubleTapWindow) {
+                    triggerBarrelRoll(e.clientX < window.innerWidth / 2 ? 1 : -1);
+                    lastTapTime.pointer = 0;
+                } else {
+                    lastTapTime.pointer = now;
+                }
+            });
+
+            window.addEventListener('pointermove', (e) => {
+                if (gameState === 'MENU' && pointer.menuDrag) {
+                    const dx = e.clientX - pointer.lastX;
+                    const dy = e.clientY - pointer.lastY;
+                    pointer.lastX = e.clientX;
+                    pointer.lastY = e.clientY;
+                    state.menuAngle -= dx * 0.006;
+                    state.menuPitch = THREE.MathUtils.clamp(state.menuPitch + dy * 0.005, -0.75, 0.75);
+                    return;
+                }
+                if (!pointer.active || gameState !== 'PLAYING') return;
+                updatePointerSteer(e.clientX, e.clientY);
+            });
+
+            window.addEventListener('pointerup', () => {
+                pointer.active = false;
+                pointer.menuDrag = false;
+                pointer.steerX = 0;
+                pointer.throttleY = 0;
+            });
+
+            // Сенсорные кнопки для мобильных
+            const touchLeftBtn = document.getElementById('touchLeftBtn');
+            const touchRightBtn = document.getElementById('touchRightBtn');
+            const touchRollBtn = document.getElementById('touchRollBtn');
+
+            touchLeftBtn.addEventListener('pointerdown', (e) => { e.stopPropagation(); touchBtns.left = true; });
+            touchLeftBtn.addEventListener('pointerup', () => { touchBtns.left = false; });
+            touchLeftBtn.addEventListener('pointerleave', () => { touchBtns.left = false; });
+
+            touchRightBtn.addEventListener('pointerdown', (e) => { e.stopPropagation(); touchBtns.right = true; });
+            touchRightBtn.addEventListener('pointerup', () => { touchBtns.right = false; });
+            touchRightBtn.addEventListener('pointerleave', () => { touchBtns.right = false; });
+
+            touchRollBtn.addEventListener('pointerdown', (e) => {
+                e.stopPropagation();
+                sound.init();
+                triggerBarrelRoll(touchBtns.left ? 1 : -1);
+            });
+
+            // =========================================================================
+            // 11. ЭФФЕКТЫ, ЧАСТИЦЫ И ВСПЛЫВАЮЩИЙ ТЕКСТ
+            // =========================================================================
+            function showPopup(text, colorClass = 'text-amber-300', topPct = 34) {
+                const el = document.createElement('div');
+                el.className = `popup-text text-lg sm:text-2xl ${colorClass}`;
+                el.style.top = topPct + '%';
+                el.textContent = text;
+                popupLayer.appendChild(el);
+                setTimeout(() => el.remove(), 1150);
+            }
+
+            function spawnVoxelParticle(pos, vel, size, color, life, grow = 0) {
+                const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.92 });
+                const mesh = new THREE.Mesh(unitBoxGeo, mat);
+                mesh.position.copy(pos);
+                mesh.scale.setScalar(size);
+                mesh.rotation.set(Math.random() * 3, Math.random() * 3, Math.random() * 3);
+                scene.add(mesh);
+
+                particles.push({
+                    mesh,
+                    mat,
+                    vel: vel.clone(),
+                    size,
+                    grow,
+                    life,
+                    maxLife: life,
+                    spin: new THREE.Vector3((Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6)
+                });
+            }
+
+            function spawnExplosion(pos, scale = 1, palette = [0xfef08a, 0xfb923c, 0xef4444, 0xffffff]) {
+                const count = Math.floor(18 * scale);
+                const vel = new THREE.Vector3();
+                for (let i = 0; i < count; i++) {
+                    vel.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5)
+                       .normalize()
+                       .multiplyScalar((5 + Math.random() * 14) * scale);
+                    const color = palette[Math.floor(Math.random() * palette.length)];
+                    spawnVoxelParticle(pos, vel, (0.35 + Math.random() * 0.55) * scale, color, 0.45 + Math.random() * 0.4, -0.35);
+                }
+                for (let i = 0; i < Math.floor(7 * scale); i++) {
+                    vel.set(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5)
+                       .normalize()
+                       .multiplyScalar((2 + Math.random() * 5) * scale);
+                    spawnVoxelParticle(pos, vel, (0.65 + Math.random() * 0.5) * scale, 0x64748b, 0.7 + Math.random() * 0.4, 0.7);
+                }
+            }
+
+            // =========================================================================
+            // 12. БОЧКА (BARREL ROLL), СПАВН ВРАГОВ И БОНУСОВ
+            // =========================================================================
+            function triggerBarrelRoll(spinDir = 1) {
+                if (player.isDodging || player.dodgeCooldownTimer > 0) return;
+
+                const ac = getCurrentAircraft();
+                player.isDodging = true;
+                player.dodgeTimer = CONFIG.dodgeDuration;
+                player.dodgeSpinDir = spinDir;
+                sound.playBarrelRoll();
+                state.screenShake = Math.max(state.screenShake, 0.35);
+                dodgeVignette.style.opacity = '1';
+
+                // Кольцо из энергетических кубиков
+                const up = player.pos.clone().normalize();
+                const right = player.forward.clone().cross(up).normalize();
+                for (let i = 0; i < 12; i++) {
+                    const ang = (i / 12) * Math.PI * 2;
+                    const v = right.clone().multiplyScalar(Math.cos(ang) * 8)
+                                   .addScaledVector(up, Math.sin(ang) * 8)
+                                   .addScaledVector(player.forward, -4);
+                    spawnVoxelParticle(player.pos, v, 0.34, ac.trailColor, 0.38, -0.4);
+                }
+
+                // Особенность Штурмовика: ударная волна уничтожает ближайшие пули
+                if (ac.dodgeShockwave > 0) {
+                    let cleared = 0;
+                    for (let i = bullets.length - 1; i >= 0; i--) {
+                        if (bullets[i].pos.distanceTo(player.pos) < ac.dodgeShockwave) {
+                            spawnVoxelParticle(bullets[i].pos, new THREE.Vector3(), 0.55, 0x4ade80, 0.25, 1.0);
+                            scene.remove(bullets[i].mesh);
+                            bullets.splice(i, 1);
+                            cleared++;
+                        }
+                    }
+                    if (cleared > 0) {
+                        state.score += cleared * 15;
+                        showPopup('УДАРНАЯ ВОЛНА!', 'text-emerald-300', 42);
+                    }
+                }
+
+                // Сброс наведения всех ракет
+                let brokenCount = 0;
+                for (const m of missiles) {
+                    if (!m.lostLock) {
+                        m.lostLock = true;
+                        brokenCount++;
+                        spawnVoxelParticle(m.pos, new THREE.Vector3(), 0.75, 0xfbbf24, 0.3, 1.2);
+                    }
+                }
+                if (brokenCount > 0) {
+                    showPopup('ЗАХВАТ СБРОШЕН!', 'text-cyan-300', 29);
+                }
+            }
+
+            function spawnOnSphereAroundPlayer(minArc, maxArc) {
+                const up = player.pos.clone().normalize();
+                const right = player.forward.clone().cross(up).normalize();
+                const randAz = Math.random() * Math.PI * 2;
+                const tangentDir = player.forward.clone().multiplyScalar(Math.cos(randAz))
+                                                 .addScaledVector(right, Math.sin(randAz)).normalize();
+                const arcAngle = minArc + Math.random() * (maxArc - minArc);
+                return up.clone().multiplyScalar(Math.cos(arcAngle))
+                         .addScaledVector(tangentDir, Math.sin(arcAngle))
+                         .normalize()
+                         .multiplyScalar(CONFIG.flightAltitude);
+            }
+
+            function spawnEnemy() {
+                const spawnPos = spawnOnSphereAroundPlayer(0.85, 1.4);
+                const spawnUp = spawnPos.clone().normalize();
+                const spawnForward = player.pos.clone().sub(spawnPos);
+                spawnForward.addScaledVector(spawnUp, -spawnForward.dot(spawnUp)).normalize();
+
+                const missileChance = Math.min(0.46, 0.22 + (state.wave - 1) * 0.06);
+                const isBomber = Math.random() < missileChance && state.survivalTime > 4.5;
+
+                const model = isBomber ? createMissileBomberModel() : createInterceptorEnemyModel();
+                scene.add(model.root);
+
+                const enemy = {
+                    type: isBomber ? 'bomber' : 'fighter',
+                    model,
+                    pos: spawnPos,
+                    forward: spawnForward,
+                    speed: isBomber
+                        ? 15.8 + Math.min(4.5, state.wave * 0.5)
+                        : 19.2 + Math.min(5.5, state.wave * 0.6),
+                    turnRate: isBomber ? 1.65 : 2.15,
+                    bankAngle: 0,
+                    radius: isBomber ? 2.15 : 1.75,
+                    state: 'chase',
+                    timer: 1.3 + Math.random() * 1.2,
+                    burstLeft: 0,
+                    burstDelay: 0,
+                    beepTimer: 0
+                };
+
+                syncObjectToSphere(model.root, enemy.pos, enemy.forward);
+                enemies.push(enemy);
+            }
+
+            function spawnPowerup() {
+                if (powerups.length >= 3) return;
+                const pos = spawnOnSphereAroundPlayer(0.45, 0.95);
+                const type = (player.hp < player.maxHp && Math.random() < 0.6) ? 'repair' : 'shield';
+                const mesh = createPowerupModel(type);
+                mesh.position.copy(pos);
+                scene.add(mesh);
+
+                powerups.push({
+                    type,
+                    mesh,
+                    pos,
+                    life: 24,
+                    spin: Math.random() * Math.PI * 2
+                });
+            }
+
+            function fireBullet(enemy) {
+                const mesh = new THREE.Mesh(bulletGeo, bulletMat);
+                const forward = enemy.forward.clone();
+                const up = enemy.pos.clone().normalize();
+                forward.applyAxisAngle(up, (Math.random() - 0.5) * 0.07).normalize();
+
+                const pos = enemy.pos.clone().addScaledVector(forward, 2.2)
+                                     .normalize().multiplyScalar(CONFIG.flightAltitude);
+                syncObjectToSphere(mesh, pos, forward);
+                scene.add(mesh);
+
+                bullets.push({
+                    mesh,
+                    pos,
+                    forward,
+                    speed: 52 + Math.min(12, state.wave * 1.2),
+                    life: 1.9,
+                    dodgedAwarded: false
+                });
+
+                if (enemy.pos.distanceTo(player.pos) < 56) {
+                    sound.playMachineGun();
+                }
+            }
+
+            function fireMissile(enemy) {
+                const mesh = createMissileModel();
+                const forward = enemy.forward.clone();
+                const pos = enemy.pos.clone().addScaledVector(forward, 2.5)
+                                     .normalize().multiplyScalar(CONFIG.flightAltitude);
+                syncObjectToSphere(mesh, pos, forward);
+                scene.add(mesh);
+
+                missiles.push({
+                    mesh,
+                    pos,
+                    forward,
+                    speed: 27.5 + Math.min(6, state.wave * 0.6),
+                    turnRate: 1.65 + Math.min(0.45, state.wave * 0.05),
+                    fuel: 6.4,
+                    age: 0,
+                    lostLock: false,
+                    smokeTimer: 0,
+                    dodgedAwarded: false
+                });
+
+                sound.playMissileLaunch();
+            }
+
+            // =========================================================================
+            // 13. СОСТОЯНИЯ ИГРЫ (СТАРТ, МЕНЮ, УРОН, КОНЕЦ)
+            // =========================================================================
+            function clearDynamicEntities() {
+                for (const e of enemies) scene.remove(e.model.root);
+                for (const b of bullets) scene.remove(b.mesh);
+                for (const m of missiles) scene.remove(m.mesh);
+                for (const pw of powerups) scene.remove(pw.mesh);
+                for (const p of particles) {
+                    scene.remove(p.mesh);
+                    p.mat.dispose();
+                }
+                enemies = [];
+                bullets = [];
+                missiles = [];
+                powerups = [];
+                particles = [];
+            }
+
+            function updateHpUI() {
+                hpSegments.innerHTML = '';
+                for (let i = 0; i < player.maxHp; i++) {
+                    const seg = document.createElement('div');
+                    const filled = i < player.hp;
+                    let colorClass = 'bg-white/10 border border-white/10';
+                    if (filled) {
+                        if (player.hp === 1) colorClass = 'bg-rose-500 shadow-[0_0_10px_#f43f5e]';
+                        else if (player.hp === 2 && player.maxHp >= 3) colorClass = 'bg-amber-400 shadow-[0_0_8px_#fbbf24]';
+                        else colorClass = 'bg-emerald-400 shadow-[0_0_8px_#34d399]';
+                    }
+                    seg.className = `w-5 sm:w-6 h-2.5 rounded-full transition-all duration-200 ${colorClass}`;
+                    hpSegments.appendChild(seg);
+                }
+                shieldBadge.classList.toggle('hidden', player.shieldTimer <= 0);
+            }
+
+            function damagePlayer() {
+                if (player.isDodging || player.invulnTimer > 0 || gameState !== 'PLAYING') return;
+
+                // Если активен щит — он поглощает попадание!
+                if (player.shieldTimer > 0) {
+                    player.shieldTimer = 0;
+                    player.invulnTimer = 0.9;
+                    state.screenShake = 0.6;
+                    updateHpUI();
+                    sound.playBarrelRoll();
+                    showPopup('ЩИТ ПОГЛОТИЛ УДАР!', 'text-cyan-300', 34);
+                    spawnExplosion(player.pos, 0.8, [0x38bdf8, 0xbae6fd, 0xffffff]);
+                    return;
+                }
+
+                player.hp -= 1;
+                player.invulnTimer = CONFIG.invulnAfterHit;
+                state.screenShake = 1.25;
+                state.hitFlashTimer = 0.28;
+                damageVignette.style.opacity = '1';
+
+                updateHpUI();
+                spawnExplosion(player.pos, 1.0, [0xfef08a, 0xfb923c, 0xef4444]);
+                sound.playExplosion(1.1);
+
+                if (player.hp <= 0) {
+                    endGame();
+                }
+            }
+
+            function awardCloseDodge() {
+                state.score += 50;
+                state.dodgesCount += 1;
+                sound.playCloseDodge();
+                showPopup('+50 БЛИЗКИЙ УВОРОТ!', 'text-amber-300', 36);
+            }
+
+            function startGame() {
+                sound.init();
+                sound.playClick();
+                clearDynamicEntities();
+
+                const ac = getCurrentAircraft();
+                gameState = 'PLAYING';
+                state.score = 0;
+                state.survivalTime = 0;
+                state.dodgesCount = 0;
+                state.wave = 1;
+                state.spawnTimer = 1.1;
+                state.powerupTimer = 7.0;
+                state.screenShake = 0;
+                state.hitFlashTimer = 0;
+
+                player.pos.set(0, 0, CONFIG.flightAltitude);
+                player.forward.set(0, 1, 0);
+                player.speed = ac.baseSpeed;
+                player.bankAngle = 0;
+                player.maxHp = ac.maxHp;
+                player.hp = ac.maxHp;
+                player.shieldTimer = 0;
+                player.invulnTimer = 1.0;
+                player.isDodging = false;
+                player.dodgeTimer = 0;
+                player.dodgeCooldownTimer = 0;
+
+                playerModel.root.visible = true;
+                playerModel.body.rotation.set(0, 0, 0);
+                playerModel.shieldMat.opacity = 0;
+                syncObjectToSphere(playerModel.root, player.pos, player.forward);
+
+                const up = player.pos.clone().normalize();
+                camera.position.copy(player.pos).addScaledVector(player.forward, -15).addScaledVector(up, 6.8);
+                camera.up.copy(up);
+                camera.lookAt(player.pos.clone().addScaledVector(player.forward, 10));
+
+                keys.left = keys.right = keys.up = keys.down = false;
+                touchBtns.left = touchBtns.right = false;
+                pointer.active = false;
+
+                updateHpUI();
+                scoreDisplay.textContent = '0';
+                highScoreHud.textContent = highScore;
+                waveDisplay.textContent = '1';
+                missileWarning.classList.add('hidden');
+                damageVignette.style.opacity = '0';
+                dodgeVignette.style.opacity = '0';
+
+                menuOverlay.classList.add('hidden');
+                gameOverScreen.classList.add('hidden');
+                hudEl.classList.remove('hidden');
+                inGameBottom.classList.remove('hidden');
+
+                spawnEnemy();
+                spawnEnemy();
+            }
+
+            function returnToMenu() {
+                sound.playClick();
+                clearDynamicEntities();
+                gameState = 'MENU';
+
+                playerModel.root.visible = true;
+                playerModel.body.rotation.set(0, 0, 0);
+                playerModel.shieldMat.opacity = 0;
+                player.pos.set(0, 0, CONFIG.flightAltitude);
+                player.forward.set(1, 0, 0);
+                syncObjectToSphere(playerModel.root, player.pos, player.forward);
+
+                hudEl.classList.add('hidden');
+                inGameBottom.classList.add('hidden');
+                gameOverScreen.classList.add('hidden');
+                missileWarning.classList.add('hidden');
+                damageVignette.style.opacity = '0';
+                dodgeVignette.style.opacity = '0';
+                menuOverlay.classList.remove('hidden');
+                menuHighScore.textContent = highScore;
+            }
+
+            function endGame() {
+                gameState = 'GAMEOVER';
+                playerModel.root.visible = false;
+                spawnExplosion(player.pos, 1.9, [0xfef08a, 0xfb923c, 0xef4444, 0x38bdf8]);
+                sound.playExplosion(1.45);
+                missileWarning.classList.add('hidden');
+
+                const finalIntScore = Math.floor(state.score);
+                let isNewRecord = false;
+                if (finalIntScore > highScore) {
+                    highScore = finalIntScore;
+                    isNewRecord = true;
+                    try { localStorage.setItem(STORAGE_KEY, String(highScore)); } catch (e) {}
+                }
+
+                const mins = Math.floor(state.survivalTime / 60);
+                const secs = Math.floor(state.survivalTime % 60);
+                finalScoreEl.textContent = finalIntScore;
+                finalTimeEl.textContent = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+                finalDodgesEl.textContent = state.dodgesCount;
+                menuHighScore.textContent = highScore;
+                highScoreHud.textContent = highScore;
+
+                const ac = getCurrentAircraft();
+                const pl = getCurrentPlanet();
+                gameOverSummary.textContent = `${ac.name} над планетой «${pl.name}» — Волна ${state.wave}`;
+                newRecordBadge.classList.toggle('hidden', !(isNewRecord && finalIntScore > 0));
+
+                setTimeout(() => {
+                    if (gameState === 'GAMEOVER') {
+                        hudEl.classList.add('hidden');
+                        inGameBottom.classList.add('hidden');
+                        gameOverScreen.classList.remove('hidden');
+                    }
+                }, 650);
+            }
+
+            // =========================================================================
+            // 14. ГЛАВНЫЙ ЦИКЛ ОБНОВЛЕНИЯ (UPDATE)
+            // =========================================================================
+            const _camDesiredPos = new THREE.Vector3();
+            const _camLookTarget = new THREE.Vector3();
+            const _camUp = new THREE.Vector3();
+
+            function update(dt) {
+                // Вращение облаков вокруг планеты
+                cloudsGroup.rotation.y += dt * 0.02;
+                cloudsGroup.rotation.x += dt * 0.005;
+
+                // Анимация пропеллеров и сопел самолета игрока
+                if (playerModel) {
+                    for (const prop of playerModel.props) {
+                        prop.rotation.z += dt * 32;
+                    }
+                }
+
+                if (state.hitFlashTimer > 0) {
+                    state.hitFlashTimer -= dt;
+                    if (state.hitFlashTimer <= 0) damageVignette.style.opacity = '0';
+                }
+                if (state.screenShake > 0) {
+                    state.screenShake = Math.max(0, state.screenShake - dt * 3.8);
+                }
+
+                // Воксельные частицы
+                for (let i = particles.length - 1; i >= 0; i--) {
+                    const p = particles[i];
+                    p.life -= dt;
+                    if (p.life <= 0) {
+                        scene.remove(p.mesh);
+                        p.mat.dispose();
+                        particles.splice(i, 1);
+                        continue;
+                    }
+                    const ratio = p.life / p.maxLife;
+                    p.mesh.position.addScaledVector(p.vel, dt);
+                    p.vel.multiplyScalar(Math.exp(-2.2 * dt));
+                    p.mesh.rotation.x += p.spin.x * dt;
+                    p.mesh.rotation.y += p.spin.y * dt;
+                    p.mesh.rotation.z += p.spin.z * dt;
+                    const s = Math.max(0.05, p.size + p.grow * (p.maxLife - p.life));
+                    p.mesh.scale.setScalar(s);
+                    p.mat.opacity = ratio * 0.9;
+                }
+
+                // --- РЕЖИМ ЖИВОГО 3D-МЕНЮ ---
+                if (gameState === 'MENU') {
+                    if (!pointer.menuDrag) {
+                        state.menuAngle += dt * 0.16;
+                    }
+                    const camR = window.innerWidth < 1024 ? 128 : 114;
+                    camera.position.set(
+                        Math.cos(state.menuAngle) * Math.cos(state.menuPitch) * camR,
+                        Math.sin(state.menuPitch) * camR,
+                        Math.sin(state.menuAngle) * Math.cos(state.menuPitch) * camR
+                    );
+                    camera.up.set(0, 1, 0);
+                    camera.lookAt(0, 0, 0);
+                    camera.fov += (55 - camera.fov) * Math.min(1, dt * 6);
+                    camera.updateProjectionMatrix();
+
+                    // Выбранный самолет красиво летит по орбите планеты
+                    const ac = getCurrentAircraft();
+                    advanceOnSphere(player, ac.baseSpeed * 0.72, dt);
+                    yawOnSphere(player, 0.24 * dt);
+                    syncObjectToSphere(playerModel.root, player.pos, player.forward);
+                    playerModel.body.rotation.z = 0.22;
+                    for (const fl of playerModel.flames) {
+                        fl.scale.z = 0.7 + Math.random() * 0.25;
+                    }
+                    return;
+                }
+
+                if (gameState !== 'PLAYING') return;
+
+                const ac = getCurrentAircraft();
+
+                // Счет, время и волны
+                state.survivalTime += dt;
+                state.score += dt * 12;
+                const newWave = 1 + Math.floor(state.survivalTime / 20);
+                if (newWave > state.wave) {
+                    state.wave = newWave;
+                    waveDisplay.textContent = state.wave;
+                    showPopup(`ВОЛНА ${state.wave}`, 'text-sky-300', 24);
+                }
+
+                // --- Управление игроком ---
+                let steer = ((keys.left || touchBtns.left) ? 1 : 0) - ((keys.right || touchBtns.right) ? 1 : 0);
+                if (steer === 0 && pointer.active) {
+                    steer = -pointer.steerX;
+                }
+
+                let throttle = (keys.up ? 1 : 0) - (keys.down ? 1 : 0);
+                if (throttle === 0 && pointer.active) {
+                    throttle = pointer.throttleY;
+                }
+
+                const targetSpeed = player.isDodging
+                    ? ac.maxSpeed + CONFIG.dodgeSpeedBoost
+                    : (throttle > 0
+                        ? ac.baseSpeed + throttle * (ac.maxSpeed - ac.baseSpeed)
+                        : ac.baseSpeed + throttle * (ac.baseSpeed - ac.minSpeed));
+
+                player.speed += (targetSpeed - player.speed) * Math.min(1, dt * 6.5);
+
+                const effectiveTurn = player.isDodging ? ac.turnRate * 0.7 : ac.turnRate;
+                yawOnSphere(player, steer * effectiveTurn * dt);
+                advanceOnSphere(player, player.speed, dt);
+
+                // Щит и неуязвимость
+                if (player.invulnTimer > 0) player.invulnTimer -= dt;
+                if (player.shieldTimer > 0) {
+                    player.shieldTimer -= dt;
+                    if (player.shieldTimer <= 0) {
+                        player.shieldTimer = 0;
+                        updateHpUI();
+                    }
+                }
+
+                // Бочка
+                if (player.isDodging) {
+                    player.dodgeTimer -= dt;
+                    const progress = 1 - Math.max(0, player.dodgeTimer / CONFIG.dodgeDuration);
+                    playerModel.body.rotation.z = player.dodgeSpinDir * progress * Math.PI * 2;
+                    playerModel.shieldMat.color.setHex(0x38bdf8);
+                    playerModel.shieldMat.opacity = 0.25 + Math.sin(progress * Math.PI) * 0.22;
+
+                    for (const fl of playerModel.flames) fl.scale.z = 1.65 + Math.random() * 0.4;
+
+                    if (player.dodgeTimer <= 0) {
+                        player.isDodging = false;
+                        player.dodgeCooldownTimer = ac.dodgeCooldown;
+                        playerModel.body.rotation.z = 0;
+                        dodgeVignette.style.opacity = '0';
+                    }
+                } else {
+                    if (player.dodgeCooldownTimer > 0) {
+                        player.dodgeCooldownTimer = Math.max(0, player.dodgeCooldownTimer - dt);
+                    }
+                    const targetBank = steer * 0.62;
+                    player.bankAngle += (targetBank - player.bankAngle) * Math.min(1, dt * 9);
+                    playerModel.body.rotation.z = player.bankAngle;
+
+                    // Показываем ауру щита, если подобран бонус щита
+                    if (player.shieldTimer > 0) {
+                        playerModel.shieldMat.color.setHex(0x22d3ee);
+                        playerModel.shieldMat.opacity = 0.16 + Math.sin(state.survivalTime * 6) * 0.06;
+                    } else {
+                        playerModel.shieldMat.opacity = 0;
+                    }
+
+                    const flameScale = 0.7 + ((player.speed - ac.minSpeed) / Math.max(1, ac.maxSpeed - ac.minSpeed)) * 0.7;
+                    for (const fl of playerModel.flames) fl.scale.z = flameScale + Math.random() * 0.2;
+                }
+
+                playerModel.root.visible = player.invulnTimer <= 0 || Math.floor(player.invulnTimer * 18) % 2 === 0;
+                syncObjectToSphere(playerModel.root, player.pos, player.forward);
+
+                // Инверсионный след
+                player.trailTimer -= dt;
+                if (player.trailTimer <= 0) {
+                    player.trailTimer = player.isDodging ? 0.025 : 0.055;
+                    const tailPos = player.pos.clone().addScaledVector(player.forward, -1.85);
+                    spawnVoxelParticle(
+                        tailPos,
+                        player.forward.clone().multiplyScalar(-2.5),
+                        player.isDodging ? 0.36 : 0.2,
+                        player.isDodging ? 0x38bdf8 : ac.trailColor,
+                        player.isDodging ? 0.36 : 0.26,
+                        0.28
+                    );
+                }
+
+                // --- Спавн врагов и небесных бонусов ---
+                const maxEnemies = Math.min(9, 3 + Math.floor(state.wave * 1.1));
+                const spawnInterval = Math.max(1.8, 4.2 - state.wave * 0.3);
+                state.spawnTimer -= dt;
+                if (state.spawnTimer <= 0 && enemies.length < maxEnemies) {
+                    spawnEnemy();
+                    state.spawnTimer = spawnInterval;
+                }
+
+                state.powerupTimer -= dt;
+                if (state.powerupTimer <= 0) {
+                    spawnPowerup();
+                    state.powerupTimer = 10 + Math.random() * 6;
+                }
+
+                // --- Обновление бонусов ---
+                for (let i = powerups.length - 1; i >= 0; i--) {
+                    const pw = powerups[i];
+                    pw.life -= dt;
+                    pw.spin += dt * 2.4;
+                    pw.mesh.rotation.set(pw.spin, pw.spin * 1.3, 0);
+
+                    if (pw.pos.distanceTo(player.pos) < 3.4) {
+                        sound.playPickup();
+                        if (pw.type === 'repair') {
+                            if (player.hp < player.maxHp) {
+                                player.hp++;
+                                updateHpUI();
+                                showPopup('+1 HP РЕМОНТ!', 'text-emerald-400', 30);
+                            } else {
+                                state.score += 100;
+                                showPopup('ПОЛНЫЙ КОРПУС! +100', 'text-emerald-300', 30);
+                            }
+                            spawnExplosion(pw.pos, 0.65, [0x22c55e, 0x4ade80, 0xffffff]);
+                        } else {
+                            player.shieldTimer = CONFIG.shieldDuration;
+                            updateHpUI();
+                            showPopup('ЩИТ АКТИВИРОВАН!', 'text-cyan-300', 30);
+                            spawnExplosion(pw.pos, 0.65, [0x06b6d4, 0x38bdf8, 0xffffff]);
+                        }
+                        scene.remove(pw.mesh);
+                        powerups.splice(i, 1);
+                        continue;
+                    }
+
+                    if (pw.life <= 0) {
+                        scene.remove(pw.mesh);
+                        powerups.splice(i, 1);
+                    }
+                }
+
+                // --- Обновление врагов ---
+                let anyLocking = false;
+                for (let i = enemies.length - 1; i >= 0; i--) {
+                    const e = enemies[i];
+                    const dist = e.pos.distanceTo(player.pos);
+                    const turnAngle = getTurnAngleToTarget(e, player.pos);
+                    const appliedTurn = THREE.MathUtils.clamp(turnAngle, -e.turnRate * dt, e.turnRate * dt);
+
+                    yawOnSphere(e, appliedTurn);
+                    advanceOnSphere(e, e.speed, dt);
+
+                    const targetBank = THREE.MathUtils.clamp(turnAngle * 1.2, -0.65, 0.65);
+                    e.bankAngle += (targetBank - e.bankAngle) * Math.min(1, dt * 6);
+                    e.model.body.rotation.z = e.bankAngle;
+                    syncObjectToSphere(e.model.root, e.pos, e.forward);
+
+                    e.timer -= dt;
+                    if (e.type === 'fighter') {
+                        if (e.state === 'chase') {
+                            if (e.timer <= 0 && dist < 44 && dist > 9 && Math.abs(turnAngle) < 0.34) {
+                                e.state = 'burst';
+                                e.burstLeft = 3;
+                                e.burstDelay = 0;
+                            }
+                        } else if (e.state === 'burst') {
+                            e.burstDelay -= dt;
+                            if (e.burstDelay <= 0 && e.burstLeft > 0) {
+                                fireBullet(e);
+                                e.burstLeft--;
+                                e.burstDelay = 0.13;
+                            }
+                            if (e.burstLeft <= 0) {
+                                e.state = 'chase';
+                                e.timer = Math.max(1.3, 2.5 - state.wave * 0.1);
+                            }
+                        }
+                    } else {
+                        if (e.state === 'chase') {
+                            if (e.timer <= 0 && dist < 58 && dist > 14 && Math.abs(turnAngle) < 0.6) {
+                                e.state = 'locking';
+                                e.timer = 1.25;
+                                e.beepTimer = 0;
+                            }
+                        } else if (e.state === 'locking') {
+                            anyLocking = true;
+                            e.beepTimer -= dt;
+                            if (e.beepTimer <= 0) {
+                                sound.playRadarBeep(false);
+                                e.beepTimer = 0.3;
+                            }
+                            if (e.timer <= 0) {
+                                fireMissile(e);
+                                e.state = 'chase';
+                                e.timer = Math.max(2.8, 4.6 - state.wave * 0.18);
+                            }
+                        }
+                    }
+
+                    if (dist < e.radius + 1.55) {
+                        if (!player.isDodging) {
+                            damagePlayer();
+                            spawnExplosion(e.pos, 1.15);
+                            scene.remove(e.model.root);
+                            enemies.splice(i, 1);
+                            continue;
+                        }
+                    }
+                }
+
+                // --- Обновление пуль ---
+                for (let i = bullets.length - 1; i >= 0; i--) {
+                    const b = bullets[i];
+                    b.life -= dt;
+                    advanceOnSphere(b, b.speed, dt);
+                    syncObjectToSphere(b.mesh, b.pos, b.forward);
+
+                    const distToPlayer = b.pos.distanceTo(player.pos);
+
+                    if (player.isDodging && !b.dodgedAwarded && distToPlayer < CONFIG.closeCallDist) {
+                        b.dodgedAwarded = true;
+                        awardCloseDodge();
+                    }
+
+                    if (!player.isDodging && distToPlayer < 1.95) {
+                        scene.remove(b.mesh);
+                        bullets.splice(i, 1);
+                        damagePlayer();
+                        continue;
+                    }
+
+                    if (b.life <= 0) {
+                        scene.remove(b.mesh);
+                        bullets.splice(i, 1);
+                    }
+                }
+
+                // --- Обновление самонаводящихся ракет ---
+                let anyActiveMissile = false;
+                for (let i = missiles.length - 1; i >= 0; i--) {
+                    const m = missiles[i];
+                    m.age += dt;
+                    m.fuel -= dt;
+
+                    if (!m.lostLock) {
+                        anyActiveMissile = true;
+                        const turnAngle = getTurnAngleToTarget(m, player.pos);
+                        const effectiveMissileTurn = m.turnRate * ac.stealthFactor;
+                        const applied = THREE.MathUtils.clamp(turnAngle, -effectiveMissileTurn * dt, effectiveMissileTurn * dt);
+                        yawOnSphere(m, applied);
+                    }
+
+                    advanceOnSphere(m, m.speed, dt);
+                    syncObjectToSphere(m.mesh, m.pos, m.forward);
+
+                    m.smokeTimer -= dt;
+                    if (m.smokeTimer <= 0) {
+                        m.smokeTimer = 0.032;
+                        const tail = m.pos.clone().addScaledVector(m.forward, -1.0);
+                        spawnVoxelParticle(
+                            tail,
+                            new THREE.Vector3((Math.random() - 0.5) * 1.4, (Math.random() - 0.5) * 1.4, (Math.random() - 0.5) * 1.4),
+                            0.36,
+                            m.lostLock ? 0x94a3b8 : 0xf1f5f9,
+                            0.55,
+                            0.65
+                        );
+                    }
+
+                    const distToPlayer = m.pos.distanceTo(player.pos);
+
+                    if (player.isDodging && !m.dodgedAwarded && distToPlayer < CONFIG.closeCallDist + 2.2) {
+                        m.dodgedAwarded = true;
+                        awardCloseDodge();
+                    }
+
+                    if (!player.isDodging && distToPlayer < 2.25) {
+                        spawnExplosion(m.pos, 1.3);
+                        scene.remove(m.mesh);
+                        missiles.splice(i, 1);
+                        damagePlayer();
+                        continue;
+                    }
+
+                    // Перехват: наведение вражеской ракеты на другой вражеский самолет (+150)
+                    if (m.age > 0.45) {
+                        let hitEnemy = false;
+                        for (let j = enemies.length - 1; j >= 0; j--) {
+                            const e = enemies[j];
+                            if (m.pos.distanceTo(e.pos) < e.radius + 1.45) {
+                                spawnExplosion(e.pos, 1.45);
+                                sound.playExplosion(1.0);
+                                state.screenShake = Math.max(state.screenShake, 0.55);
+                                state.score += 150;
+                                showPopup('+150 ПЕРЕХВАТ!', 'text-emerald-300', 26);
+                                scene.remove(e.model.root);
+                                enemies.splice(j, 1);
+                                hitEnemy = true;
+                                break;
+                            }
+                        }
+                        if (hitEnemy) {
+                            scene.remove(m.mesh);
+                            missiles.splice(i, 1);
+                            continue;
+                        }
+                    }
+
+                    if (m.fuel <= 0) {
+                        spawnExplosion(m.pos, 0.75);
+                        scene.remove(m.mesh);
+                        missiles.splice(i, 1);
+                    }
+                }
+
+                // --- Камера от третьего лица ---
+                const up = _camUp.copy(player.pos).normalize();
+                const camBackDist = player.isDodging ? 16.5 : 14.5;
+                const camHeight = player.isDodging ? 7.2 : 6.5;
+
+                _camDesiredPos.copy(player.pos)
+                    .addScaledVector(player.forward, -camBackDist)
+                    .addScaledVector(up, camHeight);
+
+                const lerpFactor = 1 - Math.exp(-8.5 * dt);
+                camera.position.lerp(_camDesiredPos, lerpFactor);
+                camera.up.lerp(up, lerpFactor).normalize();
+
+                if (state.screenShake > 0.02) {
+                    camera.position.x += (Math.random() - 0.5) * state.screenShake;
+                    camera.position.y += (Math.random() - 0.5) * state.screenShake;
+                    camera.position.z += (Math.random() - 0.5) * state.screenShake;
+                }
+
+                const targetFov = player.isDodging
+                    ? 73
+                    : (60 + ((player.speed - ac.minSpeed) / Math.max(1, ac.maxSpeed - ac.minSpeed)) * 7);
+                camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 7);
+                camera.updateProjectionMatrix();
+
+                _camLookTarget.copy(player.pos).addScaledVector(player.forward, 11);
+                camera.lookAt(_camLookTarget);
+
+                // --- Обновление HUD ---
+                const intScore = Math.floor(state.score);
+                scoreDisplay.textContent = intScore;
+                if (intScore > highScore) highScoreHud.textContent = intScore;
+
+                if (player.isDodging) {
+                    dodgeBarFill.style.width = '100%';
+                    dodgeBarFill.className = 'h-full bg-gradient-to-r from-cyan-300 to-white rounded-full';
+                    dodgeStatusText.textContent = 'БОЧКА!';
+                    dodgeStatusText.className = 'text-white font-bold';
+                } else if (player.dodgeCooldownTimer > 0) {
+                    const pct = Math.max(0, Math.min(100, (1 - player.dodgeCooldownTimer / ac.dodgeCooldown) * 100));
+                    dodgeBarFill.style.width = pct + '%';
+                    dodgeBarFill.className = 'h-full bg-gradient-to-r from-slate-500 to-sky-500 rounded-full';
+                    dodgeStatusText.textContent = player.dodgeCooldownTimer.toFixed(1) + 'с';
+                    dodgeStatusText.className = 'text-slate-400 font-mono-hud';
+                } else {
+                    dodgeBarFill.style.width = '100%';
+                    dodgeBarFill.className = 'h-full bg-gradient-to-r from-sky-400 to-cyan-300 rounded-full';
+                    dodgeStatusText.textContent = 'ГОТОВА';
+                    dodgeStatusText.className = 'text-cyan-300 font-bold';
+                }
+
+                if (anyActiveMissile) {
+                    missileWarning.classList.remove('hidden');
+                    missileWarningText.textContent = 'ТРЕВОГА: РАКЕТА НА ХВОСТЕ!';
+                } else if (anyLocking) {
+                    missileWarning.classList.remove('hidden');
+                    missileWarningText.textContent = 'ЗАХВАТ ЦЕЛИ! ПРИГОТОВЬ БОЧКУ';
+                } else {
+                    missileWarning.classList.add('hidden');
+                }
+            }
+
+            // =========================================================================
+            // 15. ЦИКЛ РЕНДЕРА И СОБЫТИЯ КНОПОК
+            // =========================================================================
+            let lastTime = 0;
+            function animate(time) {
+                requestAnimationFrame(animate);
+                if (!lastTime) lastTime = time;
+                const dt = Math.min(0.05, (time - lastTime) / 1000);
+                lastTime = time;
+
+                update(dt);
+                renderer.render(scene, camera);
+            }
+
+            function syncMuteIcons(muted) {
+                document.querySelectorAll('.sound-on-icon').forEach(el => el.classList.toggle('hidden', muted));
+                document.querySelectorAll('.sound-off-icon').forEach(el => el.classList.toggle('hidden', !muted));
+            }
+
+            document.getElementById('startBtnDesktop').addEventListener('click', startGame);
+            document.getElementById('startBtnMobile').addEventListener('click', startGame);
+            document.getElementById('restartBtn').addEventListener('click', startGame);
+            document.getElementById('hudMenuBtn').addEventListener('click', returnToMenu);
+            document.getElementById('gameOverMenuBtn').addEventListener('click', returnToMenu);
+
+            [document.getElementById('menuMuteBtn'), document.getElementById('hudMuteBtn')].forEach(btn => {
+                btn.addEventListener('click', () => {
+                    sound.init();
+                    const muted = sound.toggleMute();
+                    syncMuteIcons(muted);
+                });
+            });
+
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+
+            window.onload = function () {
+                buildPlanet(selectedPlanetId);
+                rebuildPlayerModel();
+                updateMenuUI();
+                menuHighScore.textContent = highScore;
+                highScoreHud.textContent = highScore;
+                requestAnimationFrame(animate);
+            };
+        })();
+    </script>
+</body>
+</html>
+```
